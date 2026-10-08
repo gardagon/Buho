@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { deleteMovement, saveMovement } from '../data/repo'
-import { d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
+import { Decimal, d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
 import { computePortfolio, toEur } from '../domain/portfolio'
+import { completeTrade } from '../domain/trade'
 import { MOVEMENT_TYPES, isTrade, type Asset, type Movement, type MovementType } from '../domain/types'
 import { AssetForm } from './AssetForm'
 import { Field, Sheet } from './Sheet'
@@ -35,7 +36,15 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   const [quantity, setQuantity] = useState(toInputValue(movement?.quantity))
   const [price, setPrice] = useState(toInputValue(movement?.price))
   const [amount, setAmount] = useState(toInputValue(movement?.amount))
-  const [fees, setFees] = useState(movement && movement.fees !== '0' ? toInputValue(movement.fees) : '')
+  // En compras y ventas las comisiones y el total van en EUR (lo que cobra el bróker);
+  // en dividendos y cupones, en la divisa del movimiento.
+  const [fees, setFees] = useState(() => {
+    if (!movement || movement.fees === '0') return ''
+    if (!isTrade(movement.type)) return toInputValue(movement.fees)
+    return toInputValue(toEur(d(movement.fees), movement.fxRate).toDecimalPlaces(4).toString())
+  })
+  const [totalPaid, setTotalPaid] = useState(toInputValue(movement?.totalEur))
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(movement?.currency ?? null)
   const [withholding, setWithholding] = useState(
     movement && movement.withholding !== '0' ? toInputValue(movement.withholding) : '',
   )
@@ -46,7 +55,8 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   const [creatingAsset, setCreatingAsset] = useState(false)
 
   const asset = assets.find((a) => a.id === assetId)
-  const currency = movement?.assetId === assetId ? movement.currency : (asset?.currency ?? 'EUR')
+  const currency = currencyChoice ?? asset?.currency ?? 'EUR'
+  const currencyOptions = [...new Set([asset?.currency ?? 'EUR', 'EUR', 'USD'])]
   const needsFx = currency !== 'EUR'
   const trade = isTrade(type)
 
@@ -64,53 +74,72 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   }, [type, asset, movements, movement?.id, date])
 
   const q = parseUserNumber(quantity)
-  const pr = parseUserNumber(price)
+  const pr = price.trim() === '' ? undefined : parseUserNumber(price)
   const am = parseUserNumber(amount)
-  const fe = fees.trim() === '' ? '0' : parseUserNumber(fees)
+  const feesRaw = fees.trim() === '' ? undefined : parseUserNumber(fees)
+  const totalRaw = totalPaid.trim() === '' ? undefined : parseUserNumber(totalPaid)
+  const fe = feesRaw === undefined ? '0' : feesRaw
   const wh = withholding.trim() === '' ? '0' : parseUserNumber(withholding)
-  const fx = !needsFx ? '1' : parseUserNumber(fxRate)
+  const fxRaw = fxRate.trim() === '' ? undefined : parseUserNumber(fxRate)
+
+  // Compras y ventas: lo que falta se calcula con lo que sí se ha puesto.
+  const t = trade
+    ? completeTrade({
+        type: type as 'compra' | 'venta',
+        currency,
+        quantity: q ? d(q) : undefined,
+        price: pr ? d(pr) : undefined,
+        fxRate: fxRaw ? d(fxRaw) : undefined,
+        feesEur: feesRaw ? d(feesRaw) : undefined,
+        totalEur: totalRaw ? d(totalRaw) : undefined,
+      })
+    : null
+  const fx = trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? fxRaw : '1'
 
   const errors: Record<string, boolean> = {
     asset: !asset,
     date: !/^\d{4}-\d{2}-\d{2}$/.test(date),
     quantity: trade && (q === null || d(q).lte(0)),
-    price: trade && (pr === null || d(pr).lt(0)),
+    price: trade && (pr === null || !t!.price || t!.price.lt(0)),
     amount: !trade && (am === null || d(am).lte(0)),
-    fees: fe === null || d(fe).lt(0),
+    fees: feesRaw === null || (feesRaw !== undefined && d(feesRaw).lt(0)),
+    total: trade && (totalRaw === null || (totalRaw !== undefined && d(totalRaw).lte(0)) || !!t!.inconsistent),
     withholding: wh === null || d(wh).lt(0),
-    fx: fx === null || d(fx).lte(0),
+    fx: fx === null || fx === undefined || d(fx).lte(0),
   }
   const valid = !Object.values(errors).some(Boolean)
   const bad = (k: string) => tried && errors[k]
 
+  // Importe que ve la persona en el resumen.
   let total: string | null = null
   let totalEur: string | null = null
-  if (valid) {
-    const t =
-      type === 'compra'
-        ? d(q).mul(d(pr)).plus(d(fe))
-        : type === 'venta'
-          ? d(q).mul(d(pr)).minus(d(fe))
-          : d(am).minus(d(wh)).minus(d(fe))
-    total = formatMoney(t, currency)
-    if (needsFx) totalEur = formatMoney(toEur(t, fx!), 'EUR')
+  if (valid && !trade) {
+    const t2 = d(am).minus(d(wh)).minus(d(fe))
+    total = formatMoney(t2, currency)
+    if (needsFx) totalEur = formatMoney(toEur(t2, fx!), 'EUR')
   }
-  const totalLabel = type === 'compra' ? 'Coste total' : type === 'venta' ? 'Importe neto' : 'Neto cobrado'
+  const totalLabel = type === 'compra' ? 'Total pagado' : type === 'venta' ? 'Total recibido' : 'Neto cobrado'
+  /** Número calculado como texto para un campo vacío (coma decimal). */
+  const calc = (v: Decimal | undefined, dp: number) => (v ? toInputValue(v.toDecimalPlaces(dp).toString()) : undefined)
 
   async function submit() {
     setTried(true)
     if (!valid || !asset) return
+    // Las comisiones se piden en EUR; se guardan en la divisa del movimiento.
+    const feesStored = trade ? (t!.feesEur ?? d(0)).mul(d(fx!)).toDecimalPlaces(8).toString() : fe!
     await saveMovement(
       {
         assetId: asset.id,
         type,
         date,
         quantity: trade ? q! : undefined,
-        price: trade ? pr! : undefined,
+        price: trade ? t!.price!.toString() : undefined,
         amount: trade ? undefined : am!,
         currency,
         fxRate: fx!,
-        fees: fe!,
+        fees: feesStored,
+        // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
+        totalEur: trade && totalRaw ? totalRaw : undefined,
         withholding: trade ? '0' : wh!,
         account: account.trim() || undefined,
         note: note.trim() || undefined,
@@ -161,7 +190,13 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
       <div className="segmented" role="radiogroup" aria-label="Tipo de movimiento">
         {(Object.keys(MOVEMENT_TYPES) as MovementType[]).map((t) => (
           <label key={t}>
-            <input type="radio" name="type" value={t} checked={type === t} onChange={() => setType(t)} />
+            <input type="radio" name="type" value={t} checked={type === t} onChange={() => {
+                if (isTrade(t) !== isTrade(type)) {
+                  setFees('')
+                  setTotalPaid('')
+                }
+                setType(t)
+              }} />
             <span>{MOVEMENT_TYPES[t]}</span>
           </label>
         ))}
@@ -175,7 +210,10 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
           </button>
         }
       >
-        <select value={assetId} onChange={(e) => setAssetId(e.target.value)} aria-invalid={bad('asset')}>
+        <select value={assetId} onChange={(e) => {
+            setAssetId(e.target.value)
+            setCurrencyChoice(null)
+          }} aria-invalid={bad('asset')}>
           {!asset && <option value="">Elige un activo</option>}
           {assets.map((a) => (
             <option key={a.id} value={a.id}>
@@ -191,39 +229,120 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
       </Field>
 
       {trade ? (
-        <div className="grid-2">
-          <Field
-            label="Cantidad"
-            hint={available ? `Tienes ${formatQuantity(available)} en esa fecha` : 'Títulos o participaciones'}
-          >
-            <input inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={bad('quantity')} />
-          </Field>
-          <Field label={`Precio (${currency})`} hint="Por título">
-            <input inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} aria-invalid={bad('price')} />
-          </Field>
-        </div>
+        <>
+          <div className="grid-2">
+            <Field
+              label="Cantidad"
+              hint={available ? `Tienes ${formatQuantity(available)} en esa fecha` : 'Títulos o participaciones'}
+            >
+              <input inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={bad('quantity')} />
+            </Field>
+            <Field label="Precio por título" hint={t?.derived.price ? 'Calculado con el total' : undefined}>
+              <input
+                inputMode="decimal"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder={calc(t?.price, 6)}
+                aria-invalid={bad('price')}
+              />
+            </Field>
+          </div>
+          <div className="grid-2">
+            <Field label="Divisa del precio" hint="La que ves en tu bróker">
+              <select value={currency} onChange={(e) => setCurrencyChoice(e.target.value)}>
+                {currencyOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c === 'EUR' ? 'Euros (€)' : c === 'USD' ? 'Dólares ($)' : c}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {needsFx && (
+              <Field
+                label="Tipo de cambio"
+                hint={t?.derived.fxRate ? 'Calculado: incluye comisiones' : `${currency} por 1 EUR`}
+              >
+                <input
+                  inputMode="decimal"
+                  value={fxRate}
+                  onChange={(e) => setFxRate(e.target.value)}
+                  placeholder={calc(t?.derived.fxRate ? t.fxRate : undefined, 6) ?? '1,0850'}
+                  aria-invalid={bad('fx')}
+                />
+              </Field>
+            )}
+          </div>
+          <div className="grid-2">
+            <Field
+              label="Comisiones (€)"
+              hint={t?.derived.feesEur ? 'Calculadas con el total' : 'Cánones y gastos'}
+            >
+              <input
+                inputMode="decimal"
+                value={fees}
+                onChange={(e) => setFees(e.target.value)}
+                placeholder={calc(t?.derived.feesEur ? t.feesEur : undefined, 2) ?? '0'}
+                aria-invalid={bad('fees')}
+              />
+            </Field>
+            <Field
+              label={`${totalLabel} (€)`}
+              hint={t?.derived.totalEur ? 'Calculado' : type === 'compra' ? 'Lo que te cobraron' : 'Lo que te ingresaron'}
+            >
+              <input
+                inputMode="decimal"
+                value={totalPaid}
+                onChange={(e) => setTotalPaid(e.target.value)}
+                placeholder={calc(t?.derived.totalEur ? t.totalEur : undefined, 2)}
+                aria-invalid={bad('total')}
+              />
+            </Field>
+          </div>
+        </>
       ) : (
-        <div className="grid-2">
-          <Field label={`Importe bruto (${currency})`}>
-            <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={bad('amount')} />
-          </Field>
-          <Field label={`Retención (${currency})`} hint="Origen y destino">
-            <input inputMode="decimal" value={withholding} onChange={(e) => setWithholding(e.target.value)} placeholder="0" aria-invalid={bad('withholding')} />
-          </Field>
-        </div>
+        <>
+          <div className="grid-2">
+            <Field label={`Importe bruto (${currency})`}>
+              <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={bad('amount')} />
+            </Field>
+            <Field label={`Retención (${currency})`} hint="Origen y destino">
+              <input inputMode="decimal" value={withholding} onChange={(e) => setWithholding(e.target.value)} placeholder="0" aria-invalid={bad('withholding')} />
+            </Field>
+          </div>
+          <div className="grid-2">
+            <Field label={`Comisiones (${currency})`} hint="Incluye cánones y gastos">
+              <input inputMode="decimal" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0" aria-invalid={bad('fees')} />
+            </Field>
+            {needsFx && (
+              <Field label="Tipo de cambio" hint={`${currency} por 1 EUR ese día`}>
+                <input inputMode="decimal" value={fxRate} onChange={(e) => setFxRate(e.target.value)} placeholder="1,0850" aria-invalid={bad('fx')} />
+              </Field>
+            )}
+          </div>
+        </>
       )}
 
-      <div className="grid-2">
-        <Field label={`Comisiones (${currency})`} hint="Incluye cánones y gastos">
-          <input inputMode="decimal" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0" aria-invalid={bad('fees')} />
-        </Field>
-        {needsFx && (
-          <Field label="Tipo de cambio" hint={`${currency} por 1 EUR ese día`}>
-            <input inputMode="decimal" value={fxRate} onChange={(e) => setFxRate(e.target.value)} placeholder="1,0850" aria-invalid={bad('fx')} />
-          </Field>
-        )}
-      </div>
-
+      {trade && t?.totalEur && t.perShareEur && !t.inconsistent && (
+        <div className="total-line num">
+          <span>{type === 'compra' ? 'Precio medio real' : 'Neto por título'}</span>
+          <strong>
+            {formatMoney(t.perShareEur, 'EUR')}
+            <span className="muted"> · comisiones incluidas</span>
+          </strong>
+        </div>
+      )}
+      {trade && t?.inconsistent && (
+        <p className="error-text">
+          {type === 'compra'
+            ? 'El total pagado es menor que cantidad × precio. Revisa el precio, la divisa o el tipo de cambio.'
+            : 'El total recibido es mayor que cantidad × precio. Revisa el precio, la divisa o el tipo de cambio.'}
+        </p>
+      )}
+      {trade && t?.mismatchEur && !t.inconsistent && (
+        <p className="small muted">
+          Los datos no cuadran por {formatMoney(t.mismatchEur.abs(), 'EUR')}. Se guardará el total que has puesto, que es el importe real.
+        </p>
+      )}
       {total && (
         <div className="total-line num">
           <span>{totalLabel}</span>

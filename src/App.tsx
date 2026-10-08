@@ -138,11 +138,7 @@ export function App() {
           asset={editing.asset}
           defaultWatched={editing.watched}
           movementCount={editing.asset ? movements.filter((m) => m.assetId === editing.asset!.id).length : 0}
-          onClose={(savedId) => {
-            // Si era el primer activo, enlazamos directamente con su primera compra.
-            if (!editing.asset && !editing.watched && savedId && movements.length === 0) setEditing({ kind: 'movement', assetId: savedId })
-            else setEditing(null)
-          }}
+          onClose={() => setEditing(null)}
         />
       )}
 

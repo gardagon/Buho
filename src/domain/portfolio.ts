@@ -22,14 +22,21 @@ export interface Lot {
   unitCostEur: Decimal
   /** Coste por título en la divisa original, comisiones incluidas. */
   unitCost: Decimal
+  /** Divisa en la que se introdujo el precio de esta compra. */
+  currency: string
 }
 
 export interface Position {
   asset: Asset
   quantity: Decimal
   costEur: Decimal
-  /** Coste en la divisa de cotización del activo. */
+  /**
+   * Coste en `costCurrency`: la divisa del activo si todas las compras vivas se
+   * introdujeron en ella; EUR si se mezclan divisas (p. ej. una compra con el
+   * precio en dólares y otra en euros), para no sumar peras con manzanas.
+   */
   cost: Decimal
+  costCurrency: string
   avgCostEur: Decimal
   avgCost: Decimal
   lots: Lot[]
@@ -114,12 +121,15 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
         continue
       }
       const gross = qty.mul(d(m.price)).plus(fees)
+      // Si se conoce lo realmente cobrado en EUR, ese es el coste de adquisición.
+      const costEur = m.totalEur ? d(m.totalEur) : toEur(gross, m.fxRate)
       lots.push({
         movementId: m.id,
         date: m.date,
         quantity: qty,
         unitCost: gross.div(qty),
-        unitCostEur: toEur(gross, m.fxRate).div(qty),
+        unitCostEur: costEur.div(qty),
+        currency: m.currency,
       })
     } else if (m.type === 'venta') {
       let remaining = d(m.quantity)
@@ -128,7 +138,8 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
         continue
       }
       const soldQty = remaining
-      const proceedsEur = toEur(soldQty.mul(d(m.price)).minus(fees), m.fxRate)
+      // Si se conoce lo realmente ingresado en EUR, ese es el valor de transmisión.
+      const proceedsEur = m.totalEur ? d(m.totalEur) : toEur(soldQty.mul(d(m.price)).minus(fees), m.fxRate)
       let costEur = ZERO
       const matched: RealizedSale['matched'] = []
       while (remaining.gt(0) && lots.length > 0) {
@@ -178,12 +189,15 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
     const quantity = lots.reduce((s, l) => s.plus(l.quantity), ZERO)
     if (quantity.lte(0)) continue
     const costEur = lots.reduce((s, l) => s.plus(l.quantity.mul(l.unitCostEur)), ZERO)
-    const cost = lots.reduce((s, l) => s.plus(l.quantity.mul(l.unitCost)), ZERO)
+    const asset = assetById.get(assetId)!
+    const sameCurrency = lots.every((l) => l.currency === asset.currency)
+    const cost = sameCurrency ? lots.reduce((s, l) => s.plus(l.quantity.mul(l.unitCost)), ZERO) : costEur
     positions.push({
-      asset: assetById.get(assetId)!,
+      asset,
       quantity,
       costEur,
       cost,
+      costCurrency: sameCurrency ? asset.currency : 'EUR',
       avgCostEur: costEur.div(quantity),
       avgCost: cost.div(quantity),
       lots,

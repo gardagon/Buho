@@ -92,6 +92,59 @@ describe('computePortfolio (FIFO)', () => {
   })
 })
 
+describe('computePortfolio (importe real en EUR)', () => {
+  const aapl = asset('AAPL', 'USD')
+
+  it('el total cobrado manda sobre cantidad × precio ÷ cambio', () => {
+    // 10 × 117 $ ÷ 1,17 = 1000 € pero el bróker cobró 1002,50 € (comisiones y su cambio)
+    const p = computePortfolio([aapl], [
+      mv({ assetId: 'AAPL', type: 'compra', date: '2026-01-10', quantity: '10', price: '117', currency: 'USD', fxRate: '1.17', totalEur: '1002.5' }),
+    ])
+    expect(p.positions[0].costEur.toString()).toBe('1002.5')
+    expect(p.positions[0].avgCostEur.toString()).toBe('100.25')
+  })
+
+  it('en la venta, lo ingresado es el valor de transmisión', () => {
+    // Compra: 10 títulos por 1002,50 € → 100,25 €/título.
+    // Venta de 5: 5 × 130 $ ÷ 1,30 = 500 € pero ingresan 498,75 €.
+    // Coste de los 5: 501,25 € → resultado 498,75 − 501,25 = −2,50 €
+    const p = computePortfolio([aapl], [
+      mv({ assetId: 'AAPL', type: 'compra', date: '2026-01-10', quantity: '10', price: '117', currency: 'USD', fxRate: '1.17', totalEur: '1002.5' }),
+      mv({ assetId: 'AAPL', type: 'venta', date: '2026-06-10', quantity: '5', price: '130', currency: 'USD', fxRate: '1.3', totalEur: '498.75' }),
+    ])
+    expect(p.sales[0].proceedsEur.toString()).toBe('498.75')
+    expect(p.sales[0].costEur.toString()).toBe('501.25')
+    expect(p.sales[0].gainEur.toString()).toBe('-2.5')
+    expect(p.positions[0].costEur.toString()).toBe('501.25')
+  })
+
+  it('sin total sigue calculando con cantidad × precio ± comisiones', () => {
+    const p = computePortfolio([aapl], [
+      mv({ assetId: 'AAPL', type: 'compra', date: '2026-01-10', quantity: '10', price: '117', currency: 'USD', fxRate: '1.17' }),
+    ])
+    expect(p.positions[0].costEur.toString()).toBe('1000')
+  })
+
+  it('si se mezclan divisas del precio, el coste medio se da en EUR', () => {
+    // Activo en USD: una compra con el precio en $ y otra con el precio en €
+    const p = computePortfolio([aapl], [
+      mv({ assetId: 'AAPL', type: 'compra', date: '2026-01-10', quantity: '10', price: '117', currency: 'USD', fxRate: '1.17' }),
+      mv({ assetId: 'AAPL', type: 'compra', date: '2026-02-10', quantity: '10', price: '110', currency: 'EUR' }),
+    ])
+    // 1000 € + 1100 € = 2100 € entre 20 títulos = 105 €
+    expect(p.positions[0].costCurrency).toBe('EUR')
+    expect(p.positions[0].avgCost.toString()).toBe('105')
+  })
+
+  it('con una sola divisa, el coste medio sigue en la del activo', () => {
+    const p = computePortfolio([aapl], [
+      mv({ assetId: 'AAPL', type: 'compra', date: '2026-01-10', quantity: '10', price: '117', currency: 'USD', fxRate: '1.17' }),
+    ])
+    expect(p.positions[0].costCurrency).toBe('USD')
+    expect(p.positions[0].avgCost.toString()).toBe('117')
+  })
+})
+
 describe('parseUserNumber', () => {
   it.each([
     ['1.234,56', '1234.56'],

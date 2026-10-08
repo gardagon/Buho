@@ -13,6 +13,9 @@ En cada venta se consideran vendidos primero los títulos comprados antes (art. 
 - Compra: se suman al valor de adquisición.
 - Venta: se restan del valor de transmisión.
 
+### Importe real en EUR (`Movement.totalEur`)
+Si se conoce lo que el bróker cobró (compra) o ingresó (venta) en EUR, ese importe manda: es el valor de adquisición o de transmisión, con comisiones y cambio del bróker ya incluidos. Si no se conoce, se calcula como cantidad × precio ± comisiones ÷ tipo de cambio. El formulario deduce la incógnita que falte (comisiones, precio o cambio efectivo) con `src/domain/trade.ts`.
+
 ### Divisa
 - Coste en EUR = importe en divisa ÷ tipo de cambio de la fecha de compra.
 - Ingreso en EUR = importe en divisa ÷ tipo de cambio de la fecha de venta.

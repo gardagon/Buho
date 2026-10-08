@@ -42,6 +42,7 @@ src/
     types.ts         Modelo: Asset, Movement, Snapshot
     numbers.ts       decimal.js, parseo de números escritos en español, formato es-ES
     portfolio.ts     FIFO, posiciones a coste, ventas realizadas, rendimientos, resumen anual
+    trade.ts         Completa una compra o venta: de total, precio, comisiones y cambio despeja el que falte
     valuation.ts     Valor de mercado y plusvalía latente a partir de las posiciones (puro)
     *.test.ts
   data/
@@ -73,7 +74,7 @@ Ver `src/domain/types.ts`. Puntos clave:
 
 - Todos los registros heredan de `SyncedRecord`: `id` (UUID), `createdAt`, `updatedAt`, `deleted?`.
 - `Asset`: nombre, tipo, divisa de cotización, ticker, ISIN, mercado.
-- `Movement`: `compra` y `venta` usan `quantity` y `price`; `dividendo` y `cupon` usan `amount` (bruto) y `withholding`. Todos llevan `currency`, `fxRate`, `fees`, y opcionalmente `account` y `note`.
+- `Movement`: `compra` y `venta` usan `quantity` y `price` (en la divisa elegida: dólares o euros) y, opcionalmente, `totalEur` con el importe real cobrado o ingresado; `dividendo` y `cupon` usan `amount` (bruto) y `withholding`. Todos llevan `currency`, `fxRate`, `fees`, y opcionalmente `account` y `note`.
 - `fxRate` = unidades de la divisa por 1 EUR en la fecha del movimiento (convención del BCE). Importe en EUR = importe / fxRate.
 - `Snapshot` (versión 1) es el formato del archivo de Drive y de las copias descargadas.
 
@@ -81,6 +82,12 @@ Ver `src/domain/types.ts`. Puntos clave:
 
 - **Seguimiento** es la pantalla de inicio: solo los valores que la persona ha elegido seguir (`Asset.watched`), tengan o no movimientos.
 - **Cartera** sale solo de los movimientos. Vista *Activa*: posiciones abiertas con su valor de mercado. Vista *Histórico*: resultados por año, ventas y dividendos o cupones.
+
+## Compras y ventas
+
+En el formulario, las comisiones y el total (pagado o recibido) van en **EUR**, que es lo que cobra el bróker; el precio va en la divisa que se vea en el bróker. Lo que se deja vacío se calcula y se muestra en gris (`completeTrade`). Se guarda `totalEur` solo si la persona lo escribió. Las comisiones se guardan en la divisa del movimiento (como siempre) y el coste medio por título en EUR sale de `totalEur ÷ cantidad`.
+
+Si un mismo activo tiene compras con el precio en divisas distintas, `Position.costCurrency` pasa a EUR para no mezclar divisas en el coste medio.
 
 ## Cálculo de cartera
 

@@ -15,6 +15,8 @@ interface Props {
 const dayFmt = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
 function netAmount(m: Movement) {
+  if (m.type === 'compra' && m.totalEur) return d(m.totalEur).neg()
+  if (m.type === 'venta' && m.totalEur) return d(m.totalEur)
   if (m.type === 'compra') return d(m.quantity).mul(d(m.price)).plus(d(m.fees)).neg()
   if (m.type === 'venta') return d(m.quantity).mul(d(m.price)).minus(d(m.fees))
   return d(m.amount).minus(d(m.withholding)).minus(d(m.fees))
@@ -66,12 +68,14 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
               {ms.map((m) => {
                 const a = assetById.get(m.assetId)
                 const net = netAmount(m)
+                // Con el total real en EUR, el importe ya está en euros.
+                const netCurrency = m.totalEur && (m.type === 'compra' || m.type === 'venta') ? 'EUR' : m.currency
                 return (
                   <li key={m.id}>
                     <button className="row" onClick={() => onOpen(m)}>
                       <span className="row-title">{a?.name ?? 'Activo eliminado'}</span>
                       <span className={`row-end num ${net.isNeg() ? '' : 'gain'}`}>
-                        <strong>{(net.isNeg() ? '−' : '+') + formatMoney(net.abs(), m.currency)}</strong>
+                        <strong>{(net.isNeg() ? '−' : '+') + formatMoney(net.abs(), netCurrency)}</strong>
                       </span>
                       <span className="row-sub num">
                         <span className={`tag ${m.type}`}>{MOVEMENT_TYPES[m.type]}</span>{' '}
@@ -82,7 +86,7 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
                             : ''}
                       </span>
                       <span className="row-sub row-end num">
-                        {m.currency !== 'EUR' ? formatMoney(toEur(net.abs(), m.fxRate)) : (m.account ?? '')}
+                        {netCurrency !== 'EUR' ? formatMoney(toEur(net.abs(), m.fxRate)) : (m.account ?? '')}
                       </span>
                     </button>
                   </li>

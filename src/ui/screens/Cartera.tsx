@@ -156,7 +156,7 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
                     <span className="row-sub num">
                       {v?.price
                         ? `${formatQuantity(p.quantity)} × ${formatMoney(v.price.price, v.price.currency)}`
-                        : `${formatQuantity(p.quantity)} × ${formatMoney(p.avgCost, p.asset.currency)} de coste medio`}
+                        : `${formatQuantity(p.quantity)} × ${formatMoney(p.avgCost, p.costCurrency)} de coste medio`}
                     </span>
                     {v?.unrealizedEur ? (
                       <span className={`row-sub row-end num ${v.unrealizedEur.isNeg() ? 'loss' : 'gain'}`}>

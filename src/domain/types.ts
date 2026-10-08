@@ -102,6 +102,13 @@ export interface Movement extends SyncedRecord {
    * (como publica el BCE: 1,0850 USD = 1 EUR). Vale "1" si la divisa es EUR.
    */
   fxRate: DecimalString
+  /**
+   * Compra/venta: importe real que el bróker cobró (compra) o ingresó (venta),
+   * en EUR, con comisiones y cambio ya incluidos. Si existe, manda sobre el
+   * cálculo cantidad × precio ± comisiones ÷ cambio, que es solo una estimación
+   * cuando el bróker aplica su propio cambio. Opcional: el formato sigue en la versión 1.
+   */
+  totalEur?: DecimalString
   /** Comisiones y gastos, en la divisa del movimiento. */
   fees: DecimalString
   /** Retención en origen y/o destino, en la divisa del movimiento. */
