@@ -41,6 +41,38 @@ export interface Asset extends SyncedRecord {
   isin?: string
   market?: string
   note?: string
+  /**
+   * Precio puesto a mano, en la divisa de cotización del activo. Para lo que
+   * no cotiza (fondos, bonos) o lo que el proveedor no cubre. Es opcional, así
+   * que el formato del archivo de Drive (versión 1) no cambia.
+   */
+  manualPrice?: DecimalString
+  manualPriceDate?: ISODate
+  /** Aparece en la pantalla de Seguimiento aunque no se tenga en cartera. */
+  watched?: boolean
+}
+
+/**
+ * Última cotización conocida de un activo. Es una caché local: no viaja en el
+ * Snapshot ni se sincroniza con Drive.
+ */
+export interface Quote {
+  assetId: string
+  price: DecimalString
+  /** Divisa en la que viene el precio. */
+  currency: string
+  at: ISODateTime
+  /** Cierre anterior, para calcular la variación del día. */
+  prevClose?: DecimalString
+  /** Proveedor que la dio (`finnhub`…). */
+  provider: string
+}
+
+/** Tipos de cambio actuales: unidades de divisa por 1 EUR (convención del BCE). */
+export interface FxRates {
+  /** Fecha de los tipos que publica el BCE. */
+  date: ISODate
+  rates: Record<string, DecimalString>
 }
 
 export const MOVEMENT_TYPES = {

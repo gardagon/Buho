@@ -14,7 +14,7 @@ Buho es una aplicación web estática (PWA) que se ejecuta entera en el navegado
 │      │                                                   │
 │   sync/  ──── Google Identity Services (token, 1 h) ─────┼──► Google Drive
 │                                                          │     buho-cartera.json
-│   (fase 4) quotes/ ── clave API del usuario ─────────────┼──► Finnhub / otros
+│   quotes/ ── clave API del usuario ──────────────────────┼──► Finnhub, Frankfurter (BCE)
 └──────────────────────────────────────────────────────────┘
         ▲
         │  HTML, JS, CSS, iconos (estáticos)
@@ -30,7 +30,9 @@ Buho es una aplicación web estática (PWA) que se ejecuta entera en el navegado
 | Ajustes (ID de cliente, id del archivo de Drive, última sincronización) | Tabla `meta` de IndexedDB | Por dispositivo |
 | Copia y sincronización | `buho-cartera.json` en el Drive del usuario | Opcional |
 | Token de Google | Solo en memoria | Caduca en ~1 h; no se persiste |
-| Cotizaciones (fase 4) | Se piden al abrir la app; caché local opcional | No se guardan en Drive |
+| Cotizaciones y tipos de cambio | Se piden al abrir la app (si hace más de 15 min) y con el botón «Actualizar precios». Caché en la tabla `quotes` y en `meta` | No se guardan en Drive |
+| Clave de Finnhub | Tabla `meta` | Por dispositivo; no viaja a Drive |
+| Precio manual y «seguir» | Campos opcionales del `Asset` | Sí viajan en el Snapshot (siguen siendo versión 1) |
 
 ## Estructura de carpetas
 
@@ -40,17 +42,24 @@ src/
     types.ts         Modelo: Asset, Movement, Snapshot
     numbers.ts       decimal.js, parseo de números escritos en español, formato es-ES
     portfolio.ts     FIFO, posiciones a coste, ventas realizadas, rendimientos, resumen anual
+    valuation.ts     Valor de mercado y plusvalía latente a partir de las posiciones (puro)
     *.test.ts
   data/
-    db.ts            Esquema Dexie (assets, movements, meta)
+    db.ts            Esquema Dexie (assets, movements, meta; quotes desde la versión 2)
     repo.ts          Altas, cambios y bajas lógicas; exportar e importar; aviso de cambios
     merge.ts         Fusión de copias por id + updatedAt; validación de Snapshot
   sync/
     google.ts        Carga de GIS, token, llamadas REST a Drive v3
     sync.ts          Algoritmo de sincronización (descargar → fusionar → subir)
     SyncContext.tsx  Estado de sincronización para React; autosync 3 s tras cada cambio
+  quotes/
+    types.ts         PriceProvider, QuoteResult
+    finnhub.ts       Proveedor Finnhub (REST)
+    fx.ts            Tipos de cambio del BCE vía Frankfurter
+    service.ts       refreshQuotes: pide cotizaciones y cambios y los guarda
+    QuotesContext.tsx  Estado para React; actualiza al abrir la app
   ui/
-    screens/         Cartera, Movimientos, Activos, Ajustes
+    screens/         Cartera, Movimientos, Seguimiento, Activos, Ajustes
     AssetForm.tsx, MovementForm.tsx, Sheet.tsx, Toast.tsx, hooks.ts, icons.tsx
   App.tsx            Navegación por hash (#/cartera…), hojas modales, aviso de actualización
   main.tsx
@@ -96,22 +105,22 @@ La UI lo recalcula en cada cambio con `useMemo` (`ui/hooks.ts`). Para carteras p
 - `base: './'`: rutas relativas, funciona en cualquier subcarpeta.
 - `navigator.storage.persist()` al arrancar para que el navegador no borre IndexedDB.
 
-## Fase 4: cotizaciones (diseño previsto)
+## Cotizaciones y valoración
 
 ```ts
 interface PriceProvider {
   id: string
   name: string
   supports(asset: Asset): boolean
-  getQuotes(assets: Asset[]): Promise<Map<string, Quote>>  // por assetId
-  subscribe?(assets: Asset[], onQuote: (q: Quote) => void): () => void  // WebSocket
+  getQuotes(assets: Asset[]): Promise<{ quotes: Map<string, Quote>; errors: Map<string, string> }>
 }
-interface Quote { assetId: string; price: string; currency: string; at: string; delayed: boolean }
 ```
 
-- Carpeta `src/quotes/` con un proveedor por archivo. Primero Finnhub (REST + WebSocket gratis).
-- La clave API la pone el usuario en Ajustes y se guarda en `meta`. **No** se sincroniza a Drive por defecto.
-- Caché de la última cotización en una tabla nueva de Dexie (`quotes`), para mostrar algo sin conexión. Requiere `this.version(2)` en `db.ts`.
-- Tipos de cambio para valorar en EUR: BCE vía Frankfurter (gratis, sin clave) o el propio proveedor.
-- Activos sin cotización (bonos, fondos no cotizados): precio manual con fecha.
+- Un proveedor por archivo en `src/quotes/`. Hoy solo Finnhub (REST). El ticker se envía tal cual lo escribió el usuario; la divisa de la cotización es la del activo.
+- `refreshQuotes` (`quotes/service.ts`) pide los activos en cartera o marcados con `watched`, guarda cada `Quote` en la tabla `quotes` y los tipos de cambio en `meta`. Un fallo en un activo no frena a los demás; los motivos se muestran en Ajustes.
+- Los tipos de cambio (`FxRates`) son unidades de divisa por 1 EUR, como `Movement.fxRate`. Se piden a Frankfurter (BCE, sin clave).
+- `valuePositions` (`domain/valuation.ts`) valora las posiciones de `computePortfolio` sin tocar el FIFO: precio × cantidad ÷ cambio actual. El total solo suma las posiciones que se pueden valorar y compara contra el coste de esas mismas.
+- Precio: gana la cotización, salvo que el precio manual sea de un día posterior (`pickPrice`).
+- La clave de Finnhub vive en `meta` y **no** se sincroniza a Drive.
+- El plan gratuito de Finnhub solo cubre EE. UU.; para BME, Xetra, fondos y bonos se usa el precio manual (ver DECISIONES.md).
 - Si un proveedor bloquea llamadas desde el navegador (CORS), la salida prevista es un Cloudflare Worker gratuito como proxy, nunca un servidor de pago.

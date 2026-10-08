@@ -1,6 +1,6 @@
-import { db } from './db'
+import { db, getMeta, setMeta } from './db'
 import { mergeSnapshots } from './merge'
-import type { Asset, Movement, Snapshot } from '../domain/types'
+import type { Asset, FxRates, Movement, Quote, Snapshot } from '../domain/types'
 
 type NewRecord<T> = Omit<T, 'id' | 'createdAt' | 'updatedAt' | 'deleted'>
 
@@ -73,10 +73,31 @@ export async function mergeIntoLocal(remote: Snapshot): Promise<Snapshot> {
   return merged
 }
 
+/**
+ * Cotizaciones y tipos de cambio: caché local. No llevan `updatedAt` ni
+ * avisan a la sincronización porque no viajan a Drive.
+ */
+export const QUOTE_META = {
+  finnhubKey: 'quotes.finnhubKey',
+  fx: 'quotes.fx',
+  refreshedAt: 'quotes.refreshedAt',
+} as const
+
+export async function saveQuotes(quotes: Quote[]) {
+  await db.quotes.bulkPut(quotes)
+}
+
+export async function saveFxRates(fx: FxRates) {
+  await setMeta(QUOTE_META.fx, fx)
+}
+
+export const loadFxRates = () => getMeta<FxRates>(QUOTE_META.fx)
+
 export async function wipeLocalData() {
-  await db.transaction('rw', db.assets, db.movements, db.meta, async () => {
+  await db.transaction('rw', db.assets, db.movements, db.meta, db.quotes, async () => {
     await db.assets.clear()
     await db.movements.clear()
     await db.meta.clear()
+    await db.quotes.clear()
   })
 }

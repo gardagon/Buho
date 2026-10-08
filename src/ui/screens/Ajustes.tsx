@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getMeta, setMeta } from '../../data/db'
+import { QUOTE_META } from '../../data/repo'
+import { useQuotes } from '../../quotes/QuotesContext'
 import { parseSnapshot } from '../../data/merge'
 import { exportSnapshot, mergeIntoLocal, wipeLocalData } from '../../data/repo'
 import { META } from '../../sync/sync'
@@ -13,11 +15,21 @@ export function Ajustes() {
   const toast = useToast()
   const fileInput = useRef<HTMLInputElement>(null)
   const [clientId, setClientId] = useState('')
+  const quotes = useQuotes()
+  const [finnhubKey, setFinnhubKey] = useState('')
   const envClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
   useEffect(() => {
     void getMeta<string>(META.clientId).then((v) => setClientId(v ?? ''))
+    void getMeta<string>(QUOTE_META.finnhubKey).then((v) => setFinnhubKey(v ?? ''))
   }, [])
+
+  async function saveFinnhubKey() {
+    const key = finnhubKey.trim()
+    await setMeta(QUOTE_META.finnhubKey, key || undefined)
+    toast(key ? 'Clave guardada' : 'Clave borrada')
+    if (key) void quotes.refresh()
+  }
 
   async function saveClientId() {
     await setMeta(META.clientId, clientId.trim() || undefined)
@@ -135,6 +147,46 @@ export function Ajustes() {
             </div>
           </div>
         </details>
+      </section>
+
+      <section className="settings-group" aria-labelledby="quotes-h">
+        <h2 id="quotes-h">Cotizaciones</h2>
+        <p>
+          Buho pide los precios a Finnhub con tu propia clave gratuita, y los tipos de cambio al BCE (sin clave). La clave
+          se guarda solo en este dispositivo y no se sube a Drive. Consíguela en finnhub.io, en «API Key».
+        </p>
+        <p>
+          El plan gratuito de Finnhub solo cubre valores de EE. UU. Para BME, Xetra, fondos y bonos, escribe un precio
+          manual en cada activo.
+        </p>
+        <label className="field">
+          <span>Clave de Finnhub</span>
+          <input
+            type="password"
+            value={finnhubKey}
+            onChange={(e) => setFinnhubKey(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <div className="actions">
+          <button className="btn" onClick={saveFinnhubKey}>
+            Guardar clave
+          </button>
+          <button className="btn" onClick={() => void quotes.refresh()} disabled={quotes.refreshing}>
+            {quotes.refreshing ? 'Actualizando…' : 'Actualizar ahora'}
+          </button>
+        </div>
+        {quotes.lastReport && (quotes.lastReport.failed.length > 0 || quotes.lastReport.fxError) && (
+          <ul className="error-text">
+            {quotes.lastReport.failed.map((f) => (
+              <li key={f.assetName}>
+                {f.assetName}: {f.message}
+              </li>
+            ))}
+            {quotes.lastReport.fxError && <li>{quotes.lastReport.fxError}</li>}
+          </ul>
+        )}
       </section>
 
       <section className="settings-group" aria-labelledby="backup-h">

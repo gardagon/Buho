@@ -33,3 +33,9 @@ export const IconAjustes = () => (
     <circle cx="10" cy="17" r="2" />
   </svg>
 )
+export const IconSeguimiento = () => (
+  <svg {...base}>
+    <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" />
+    <circle cx="12" cy="12" r="2.5" />
+  </svg>
+)

@@ -40,9 +40,19 @@ Registro de las decisiones tomadas y por qué. Si alguna cambia, añade una entr
 
 **Por qué la clave del usuario:** tener una clave gratuita no da derecho a redistribuir datos. Si cada usuario pide sus propias cotizaciones, no hay problema de licencias al publicar la app, ni coste.
 
-**A comprobar al implementar:** cobertura de BME y Xetra; límites actuales de cada plan; si permiten llamadas desde el navegador (CORS).
+**A comprobar al implementar:** cobertura de BME y Xetra (comprobado, ver la entrada siguiente); límites actuales de cada plan; si permiten llamadas desde el navegador (CORS).
 
 **Bonos:** pocas fuentes gratuitas. Precio manual o seguimiento a través de un ETF de renta fija. Materias primas: vía ETC o futuros.
+
+## 2026-10-08: Finnhub gratuito no cubre BME ni Xetra
+
+**Hallazgo:** al empezar la fase 4 se comprobó la cobertura. El plan gratuito de Finnhub solo da cotizaciones de valores de EE. UU.; las bolsas internacionales (BME, Xetra…) exigen plan de pago. Twelve Data tampoco da tiempo real europeo en su plan gratuito, según su propia documentación.
+
+**Decisión:** mantener Finnhub como primer proveedor (cubre EE. UU. y es el que ya está integrado) y tratar el **precio manual** como vía normal para valores europeos, fondos y bonos. La interfaz `PriceProvider` queda lista para añadir otro proveedor sin tocar la valoración.
+
+**Por qué no pagar ni cambiar de arquitectura:** el coste cero es una regla del proyecto. Alternativas no oficiales (scraping, endpoints sin documentar) se descartan por frágiles y de licencia dudosa.
+
+**Pendiente:** valorar un segundo proveedor gratuito que cubra Europa si el precio manual resulta incómodo. No se ha podido probar contra las APIs reales desde el entorno de desarrollo (red bloqueada): solo hay tests con respuestas simuladas.
 
 ## 2026-10-08: stack
 

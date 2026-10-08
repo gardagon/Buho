@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { deleteAsset, saveAsset } from '../data/repo'
+import { parseUserNumber, toInputValue } from '../domain/numbers'
 import { ASSET_TYPES, type Asset, type AssetType } from '../domain/types'
 import { Field, Sheet } from './Sheet'
 import { useToast } from './Toast'
@@ -21,10 +22,15 @@ export function AssetForm({ asset, movementCount = 0, onClose }: Props) {
   const [isin, setIsin] = useState(asset?.isin ?? '')
   const [market, setMarket] = useState(asset?.market ?? '')
   const [note, setNote] = useState(asset?.note ?? '')
+  const [manualPrice, setManualPrice] = useState(toInputValue(asset?.manualPrice))
+  const [manualDate, setManualDate] = useState(asset?.manualPriceDate ?? new Date().toISOString().slice(0, 10))
+  const [watched, setWatched] = useState(asset?.watched ?? false)
   const [tried, setTried] = useState(false)
 
   const isinOk = isin.trim() === '' || /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin.trim().toUpperCase())
-  const valid = name.trim() !== '' && /^[A-Z]{3}$/.test(currency.trim().toUpperCase()) && isinOk
+  const priceParsed = manualPrice.trim() === '' ? undefined : parseUserNumber(manualPrice)
+  const priceOk = manualPrice.trim() === '' || (priceParsed !== null && Number(priceParsed) > 0)
+  const valid = priceOk && name.trim() !== '' && /^[A-Z]{3}$/.test(currency.trim().toUpperCase()) && isinOk
 
   async function submit() {
     setTried(true)
@@ -38,6 +44,9 @@ export function AssetForm({ asset, movementCount = 0, onClose }: Props) {
         isin: isin.trim().toUpperCase() || undefined,
         market: market.trim() || undefined,
         note: note.trim() || undefined,
+        manualPrice: priceParsed || undefined,
+        manualPriceDate: priceParsed ? manualDate : undefined,
+        watched: watched || undefined,
       },
       asset?.id,
     )
@@ -126,6 +135,31 @@ export function AssetForm({ asset, movementCount = 0, onClose }: Props) {
       <Field label="Mercado">
         <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="BME, Xetra, NASDAQ…" />
       </Field>
+      <div className="grid-2">
+        <Field
+          label="Precio manual"
+          hint={
+            tried && !priceOk
+              ? 'Escribe un precio mayor que cero, p. ej. 12,34'
+              : `En ${currency || 'la divisa del activo'}. Para fondos, bonos o valores sin cotización.`
+          }
+        >
+          <input
+            value={manualPrice}
+            onChange={(e) => setManualPrice(e.target.value)}
+            inputMode="decimal"
+            placeholder="12,34"
+            aria-invalid={tried && !priceOk}
+          />
+        </Field>
+        <Field label="Fecha del precio">
+          <input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} />
+        </Field>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={watched} onChange={(e) => setWatched(e.target.checked)} />
+        Seguir en la pantalla de Seguimiento
+      </label>
       <Field label="Notas">
         <textarea value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>

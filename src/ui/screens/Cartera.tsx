@@ -1,5 +1,8 @@
 import { useMemo } from 'react'
-import { formatMoney, formatQuantity, formatSignedMoney } from '../../domain/numbers'
+import { formatMoney, formatPercent, formatQuantity, formatSignedMoney } from '../../domain/numbers'
+import { valuePositions } from '../../domain/valuation'
+import { useQuotes } from '../../quotes/QuotesContext'
+import { priceNote, RefreshLine } from '../prices'
 import { summarizeByYear, type Portfolio } from '../../domain/portfolio'
 import { ASSET_TYPES, type AssetType } from '../../domain/types'
 import { Decimal } from '../../domain/numbers'
@@ -24,6 +27,10 @@ interface Props {
 export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
   const { positions, totalCostEur, issues } = portfolio
   const years = useMemo(() => summarizeByYear(portfolio), [portfolio])
+  const { quotes, fx } = useQuotes()
+  const valuation = useMemo(() => valuePositions(positions, quotes, fx), [positions, quotes, fx])
+  const valuedCount = positions.length - valuation.unvalued
+  const rowByAsset = useMemo(() => new Map(valuation.rows.map((r) => [r.position.asset.id, r])), [valuation])
 
   const mix = useMemo(() => {
     const m = new Map<AssetType, Decimal>()
@@ -53,8 +60,26 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
   return (
     <>
       <p className="summary">
-        Tienes <strong className="num">{formatMoney(totalCostEur)}</strong> invertidos en{' '}
-        {positions.length === 1 ? 'un activo' : `${positions.length} activos`}.
+        {valuedCount > 0 ? (
+          <>
+            Tu cartera vale <strong className="num">{formatMoney(valuation.valueEur)}</strong>
+            {valuation.unrealizedPct && (
+              <>
+                , un{' '}
+                <strong className={`num ${valuation.unrealizedEur.isNeg() ? 'loss' : 'gain'}`}>
+                  {formatSignedMoney(valuation.unrealizedEur)} ({formatPercent(valuation.unrealizedPct)})
+                </strong>{' '}
+                sobre lo que pusiste
+              </>
+            )}
+            .
+          </>
+        ) : (
+          <>
+            Tienes <strong className="num">{formatMoney(totalCostEur)}</strong> invertidos en{' '}
+            {positions.length === 1 ? 'un activo' : `${positions.length} activos`}.
+          </>
+        )}
         {thisYear && !thisYear.netGainEur.isZero() && (
           <>
             {' '}
@@ -66,6 +91,12 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
           </>
         )}
       </p>
+      {valuation.unvalued > 0 && valuedCount > 0 && (
+        <p className="small muted">
+          {valuation.unvalued === 1 ? 'Una posición no se puede valorar' : `${valuation.unvalued} posiciones no se pueden valorar`}{' '}
+          y no cuentan en el valor total. Les falta el precio (ponlo a mano en Activos) o el tipo de cambio (actualiza).
+        </p>
+      )}
 
       {issues.length > 0 && (
         <div className="notice" role="alert">
@@ -98,25 +129,45 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
 
       {positions.length > 0 && (
         <section>
-          <h2>Posiciones a coste</h2>
+          <h2>Posiciones</h2>
+          <RefreshLine />
           <ul className="rows">
-            {positions.map((p) => (
-              <li key={p.asset.id}>
-                <button className="row" onClick={() => onOpenAsset(p.asset.id)}>
-                  <span className="row-title">{p.asset.name}</span>
-                  <span className="row-end num">
-                    <strong>{formatMoney(p.costEur)}</strong>
-                  </span>
-                  <span className="row-sub num">
-                    {formatQuantity(p.quantity)} × {formatMoney(p.avgCost, p.asset.currency)} de coste medio
-                  </span>
-                  <span className="row-sub row-end">{p.asset.ticker ?? ASSET_TYPES[p.asset.type]}</span>
-                </button>
-              </li>
-            ))}
+            {positions.map((p) => {
+              const v = rowByAsset.get(p.asset.id)
+              return (
+                <li key={p.asset.id}>
+                  <button className="row" onClick={() => onOpenAsset(p.asset.id)}>
+                    <span className="row-title">{p.asset.name}</span>
+                    <span className="row-end num">
+                      <strong>{formatMoney(v?.valueEur ?? p.costEur)}</strong>
+                    </span>
+                    <span className="row-sub num">
+                      {v?.price
+                        ? `${formatQuantity(p.quantity)} × ${formatMoney(v.price.price, v.price.currency)}`
+                        : `${formatQuantity(p.quantity)} × ${formatMoney(p.avgCost, p.asset.currency)} de coste medio`}
+                    </span>
+                    {v?.unrealizedEur ? (
+                      <span className={`row-sub row-end num ${v.unrealizedEur.isNeg() ? 'loss' : 'gain'}`}>
+                        {formatSignedMoney(v.unrealizedEur)}
+                        {v.unrealizedPct && ` (${formatPercent(v.unrealizedPct)})`}
+                      </span>
+                    ) : (
+                      <span className="row-sub row-end">
+                        {v?.missingFx
+                          ? `Falta el cambio ${p.asset.currency}/EUR`
+                          : v?.price
+                            ? priceNote(v.price)
+                            : 'Sin precio · coste ' + formatMoney(p.costEur)}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
           <p className="small muted" style={{ marginTop: 8 }}>
-            Coste calculado por FIFO e incluyendo comisiones. La valoración a precio de mercado llegará con las cotizaciones.
+            El valor usa el último precio disponible y el cambio actual del BCE. La plusvalía latente es orientativa: el coste
+            es FIFO con comisiones, el que usa Hacienda.
           </p>
         </section>
       )}

@@ -4,16 +4,18 @@ import type { Asset, Movement } from './domain/types'
 import { useSync } from './sync/SyncContext'
 import { AssetForm } from './ui/AssetForm'
 import { usePortfolio } from './ui/hooks'
-import { IconActivos, IconAjustes, IconCartera, IconMovimientos } from './ui/icons'
+import { IconActivos, IconAjustes, IconCartera, IconMovimientos, IconSeguimiento } from './ui/icons'
 import { MovementForm } from './ui/MovementForm'
 import { Activos } from './ui/screens/Activos'
 import { Ajustes } from './ui/screens/Ajustes'
 import { Cartera } from './ui/screens/Cartera'
 import { Movimientos } from './ui/screens/Movimientos'
+import { Seguimiento } from './ui/screens/Seguimiento'
 
 const ROUTES = [
   { id: 'cartera', label: 'Cartera', Icon: IconCartera },
   { id: 'movimientos', label: 'Movimientos', Icon: IconMovimientos },
+  { id: 'seguimiento', label: 'Seguimiento', Icon: IconSeguimiento },
   { id: 'activos', label: 'Activos', Icon: IconActivos },
   { id: 'ajustes', label: 'Ajustes', Icon: IconAjustes },
 ] as const
@@ -88,6 +90,9 @@ export function App() {
             onOpen={(m) => setEditing({ kind: 'movement', movement: m })}
             onAdd={addMovement}
           />
+        )}
+        {route === 'seguimiento' && (
+          <Seguimiento assets={assets} onOpen={(a) => setEditing({ kind: 'asset', asset: a })} />
         )}
         {route === 'activos' && (
           <Activos

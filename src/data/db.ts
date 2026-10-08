@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Asset, Movement } from '../domain/types'
+import type { Asset, Movement, Quote } from '../domain/types'
 
 export interface MetaEntry {
   key: string
@@ -11,6 +11,8 @@ export class BuhoDB extends Dexie {
   assets!: EntityTable<Asset, 'id'>
   movements!: EntityTable<Movement, 'id'>
   meta!: EntityTable<MetaEntry, 'key'>
+  /** Caché de la última cotización por activo. No se sincroniza. */
+  quotes!: EntityTable<Quote, 'assetId'>
 
   constructor(name = 'buho') {
     super(name)
@@ -19,6 +21,7 @@ export class BuhoDB extends Dexie {
       movements: 'id, assetId, date, type, updatedAt',
       meta: 'key',
     })
+    this.version(2).stores({ quotes: 'assetId' })
   }
 }
 

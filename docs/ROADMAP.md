@@ -19,15 +19,19 @@
 - [ ] Guardarlo como variable de repositorio `GOOGLE_CLIENT_ID`
 - [ ] Probar la sincronización entre móvil y ordenador
 
-### Fase 4: cotizaciones y valoración
-- [ ] `src/quotes/` con la interfaz `PriceProvider` (ver ARQUITECTURA.md)
-- [ ] Proveedor Finnhub (REST y, si cabe, WebSocket); comprobar cobertura BME y Xetra
-- [ ] Clave API del usuario en Ajustes
-- [ ] Tabla `quotes` en Dexie (versión 2 del esquema) con la última cotización
-- [ ] Tipos de cambio actuales (Frankfurter/BCE) para valorar en EUR
-- [ ] Precio manual para activos sin cotización
-- [ ] Cartera: valor de mercado, plusvalía latente por posición y total
-- [ ] Pantalla de seguimiento con los valores seleccionados
+### Fase 4: cotizaciones y valoración (hecha salvo lo marcado)
+- [x] `src/quotes/` con la interfaz `PriceProvider` (ver ARQUITECTURA.md)
+- [x] Proveedor Finnhub por REST
+- [ ] Finnhub por WebSocket (precio en vivo con la app abierta)
+- [x] Cobertura BME y Xetra comprobada: **no está en el plan gratuito** (ver DECISIONES.md)
+- [x] Clave API del usuario en Ajustes
+- [x] Tabla `quotes` en Dexie (versión 2 del esquema) con la última cotización
+- [x] Tipos de cambio actuales (Frankfurter/BCE) para valorar en EUR
+- [x] Precio manual para activos sin cotización
+- [x] Cartera: valor de mercado, plusvalía latente por posición y total
+- [x] Pantalla de Seguimiento con los valores seleccionados
+- [ ] Probar con una clave real de Finnhub y con Frankfurter desde el navegador (CORS); solo se ha probado con respuestas simuladas
+- [ ] Segundo proveedor que cubra BME y Xetra (Twelve Data u otro) si el precio manual se queda corto
 
 ### Fase 5: fiscalidad completa
 Ver `docs/FISCALIDAD.md`, sección «Pendiente».
