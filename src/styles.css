@@ -104,7 +104,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: var(--step-1); }
-.brand img { width: 28px; height: 28px; border-radius: 7px; }
+.brand img { width: 32px; height: 32px; }
 
 main {
   width: 100%;

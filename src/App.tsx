@@ -54,7 +54,7 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <img src="./favicon.svg" alt="" />
+          <img src="./pwa-64x64.png" alt="" />
           Buho
         </div>
         <SyncPill onOpenSettings={() => go('ajustes')} />

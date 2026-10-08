@@ -18,7 +18,7 @@ npm install
 npm run dev        # http://localhost:5173
 npm test           # vitest: cálculo FIFO, fusión de copias, IndexedDB
 npm run build      # tsc --noEmit + vite build (genera dist/ y el service worker)
-npx pwa-assets-generator   # regenera los iconos desde public/favicon.svg
+npx pwa-assets-generator   # regenera los iconos desde public/logo.png
 ```
 
 Antes de dar algo por terminado: `npm test` y `npm run build` deben pasar.

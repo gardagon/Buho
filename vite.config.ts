@@ -13,7 +13,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['favicon.svg', 'apple-touch-icon-180x180.png'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon-180x180.png'],
       manifest: {
         name: 'Buho · Cartera de inversión',
         short_name: 'Buho',
@@ -34,6 +34,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // El logo original (1,4 MB) es solo la fuente de los iconos: no hace falta tenerlo sin conexión.
+        globIgnores: ['logo.png'],
         navigateFallback: 'index.html',
       },
     }),

@@ -64,7 +64,7 @@ src/
   App.tsx            Navegación por hash (#/cartera…), hojas modales, aviso de actualización
   main.tsx
   styles.css         Variables de diseño (claro/oscuro) y estilos
-public/              favicon.svg (fuente de los iconos) y PNG generados
+public/              logo.png (fuente de los iconos; se regeneran con `npx pwa-assets-generator`) e iconos PNG generados
 ```
 
 ## Modelo de datos
