@@ -89,10 +89,6 @@ En el formulario, las comisiones y el total (pagado o recibido) van en **EUR**, 
 
 Si un mismo activo tiene compras con el precio en divisas distintas, `Position.costCurrency` pasa a EUR para no mezclar divisas en el coste medio.
 
-## Guardado de movimientos
-
-Al pulsar «Añadir movimiento», el formulario se cierra al momento y el guardado en IndexedDB sigue en segundo plano; el aviso («Compra añadida») sale cuando termina, y si falla se avisa con el motivo. Así, si el dispositivo tarda en escribir, la persona puede empezar el siguiente movimiento sin que el aviso del anterior le cierre lo que está escribiendo, y no hay doble envío. Los activos siguen guardándose antes de cerrar porque otros formularios necesitan su id.
-
 ## Cálculo de cartera
 
 `computePortfolio(assets, movements)` es una función pura:

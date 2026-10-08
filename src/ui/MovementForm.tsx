@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { deleteMovement, saveMovement } from '../data/repo'
 import { Decimal, d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
 import { computePortfolio, toEur } from '../domain/portfolio'
@@ -53,7 +53,6 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   const [note, setNote] = useState(movement?.note ?? '')
   const [tried, setTried] = useState(false)
   const [creatingAsset, setCreatingAsset] = useState(false)
-  const submitting = useRef(false)
 
   const asset = assets.find((a) => a.id === assetId)
   const currency = currencyChoice ?? asset?.currency ?? 'EUR'
@@ -123,47 +122,39 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   /** Número calculado como texto para un campo vacío (coma decimal). */
   const calc = (v: Decimal | undefined, dp: number) => (v ? toInputValue(v.toDecimalPlaces(dp).toString()) : undefined)
 
-  function submit() {
+  async function submit() {
     setTried(true)
     if (!valid || !asset) return
-    if (submitting.current) return
-    submitting.current = true
     // Las comisiones se piden en EUR; se guardan en la divisa del movimiento.
     const feesStored = trade ? (t!.feesEur ?? d(0)).mul(d(fx!)).toDecimalPlaces(8).toString() : fe!
-    const data = {
-      assetId: asset.id,
-      type,
-      date,
-      quantity: trade ? q! : undefined,
-      price: trade ? t!.price!.toString() : undefined,
-      amount: trade ? undefined : am!,
-      currency,
-      fxRate: fx!,
-      fees: feesStored,
-      // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
-      totalEur: trade && totalRaw ? totalRaw : undefined,
-      withholding: trade ? '0' : wh!,
-      account: account.trim() || undefined,
-      note: note.trim() || undefined,
-    }
-    const done = movement ? 'Movimiento guardado' : ADDED[type]
-    // Se cierra al momento y se guarda en segundo plano: si el dispositivo tarda en
-    // escribir, la persona puede seguir con el siguiente movimiento sin que el aviso
-    // del anterior le cierre lo que está escribiendo.
-    onClose()
-    saveMovement(data, movement?.id).then(
-      () => toast(done),
-      (e) => toast(`No se pudo guardar el movimiento: ${e instanceof Error ? e.message : 'error desconocido'}. Vuelve a añadirlo.`),
+    await saveMovement(
+      {
+        assetId: asset.id,
+        type,
+        date,
+        quantity: trade ? q! : undefined,
+        price: trade ? t!.price!.toString() : undefined,
+        amount: trade ? undefined : am!,
+        currency,
+        fxRate: fx!,
+        fees: feesStored,
+        // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
+        totalEur: trade && totalRaw ? totalRaw : undefined,
+        withholding: trade ? '0' : wh!,
+        account: account.trim() || undefined,
+        note: note.trim() || undefined,
+      },
+      movement?.id,
     )
+    toast(movement ? 'Movimiento guardado' : ADDED[type])
+    onClose()
   }
 
-  function remove() {
+  async function remove() {
     if (!movement || !confirm('¿Eliminar este movimiento?')) return
+    await deleteMovement(movement.id)
+    toast('Movimiento eliminado')
     onClose()
-    deleteMovement(movement.id).then(
-      () => toast('Movimiento eliminado'),
-      () => toast('No se pudo eliminar el movimiento. Inténtalo de nuevo.'),
-    )
   }
 
   if (creatingAsset) {
