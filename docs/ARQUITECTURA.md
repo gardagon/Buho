@@ -59,7 +59,7 @@ src/
     service.ts       refreshQuotes: pide cotizaciones y cambios y los guarda
     QuotesContext.tsx  Estado para React; actualiza al abrir la app
   ui/
-    screens/         Cartera, Movimientos, Seguimiento, Activos, Ajustes
+    screens/         Seguimiento (inicio), Cartera (activa e histórico), Movimientos, Activos, Ajustes
     AssetForm.tsx, MovementForm.tsx, Sheet.tsx, Toast.tsx, hooks.ts, icons.tsx
   App.tsx            Navegación por hash (#/cartera…), hojas modales, aviso de actualización
   main.tsx
@@ -76,6 +76,11 @@ Ver `src/domain/types.ts`. Puntos clave:
 - `Movement`: `compra` y `venta` usan `quantity` y `price`; `dividendo` y `cupon` usan `amount` (bruto) y `withholding`. Todos llevan `currency`, `fxRate`, `fees`, y opcionalmente `account` y `note`.
 - `fxRate` = unidades de la divisa por 1 EUR en la fecha del movimiento (convención del BCE). Importe en EUR = importe / fxRate.
 - `Snapshot` (versión 1) es el formato del archivo de Drive y de las copias descargadas.
+
+## Pantallas
+
+- **Seguimiento** es la pantalla de inicio: solo los valores que la persona ha elegido seguir (`Asset.watched`), tengan o no movimientos.
+- **Cartera** sale solo de los movimientos. Vista *Activa*: posiciones abiertas con su valor de mercado. Vista *Histórico*: resultados por año, ventas y dividendos o cupones.
 
 ## Cálculo de cartera
 

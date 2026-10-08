@@ -7,9 +7,10 @@ import { priceNote, RefreshLine } from '../prices'
 interface Props {
   assets: Asset[]
   onOpen: (asset: Asset) => void
+  onAdd: () => void
 }
 
-export function Seguimiento({ assets, onOpen }: Props) {
+export function Seguimiento({ assets, onOpen, onAdd }: Props) {
   const { quotes, hasKey } = useQuotes()
   const watched = assets.filter((a) => a.watched)
 
@@ -17,15 +18,23 @@ export function Seguimiento({ assets, onOpen }: Props) {
     <>
       <div className="screen-head">
         <h1>Seguimiento</h1>
+        {watched.length > 0 && (
+          <button className="btn small" onClick={onAdd}>
+            Seguir un valor
+          </button>
+        )}
       </div>
 
       {watched.length === 0 ? (
         <div className="empty">
           <p>No sigues ningún valor todavía.</p>
           <p>
-            Abre un activo en la pestaña Activos y marca «Seguir en la pantalla de Seguimiento». Aquí verás su precio y cómo
-            se mueve, aunque no lo tengas en cartera.
+            Elige los valores que quieres vigilar y aquí verás su precio y cómo se mueven, los tengas en cartera o no. Para
+            seguir uno que ya has dado de alta, ábrelo en Activos y marca «Seguir».
           </p>
+          <button className="btn primary" onClick={onAdd}>
+            Seguir un valor
+          </button>
         </div>
       ) : (
         <>

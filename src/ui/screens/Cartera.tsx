@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { formatMoney, formatPercent, formatQuantity, formatSignedMoney } from '../../domain/numbers'
 import { valuePositions } from '../../domain/valuation'
 import { useQuotes } from '../../quotes/QuotesContext'
@@ -6,6 +6,8 @@ import { priceNote, RefreshLine } from '../prices'
 import { summarizeByYear, type Portfolio } from '../../domain/portfolio'
 import { ASSET_TYPES, type AssetType } from '../../domain/types'
 import { Decimal } from '../../domain/numbers'
+
+const dateFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 
 export const TYPE_COLORS: Record<AssetType, string> = {
   accion: '#e8ab2c',
@@ -27,6 +29,7 @@ interface Props {
 export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
   const { positions, totalCostEur, issues } = portfolio
   const years = useMemo(() => summarizeByYear(portfolio), [portfolio])
+  const [view, setView] = useState<'activa' | 'historico'>('activa')
   const { quotes, fx } = useQuotes()
   const valuation = useMemo(() => valuePositions(positions, quotes, fx), [positions, quotes, fx])
   const valuedCount = positions.length - valuation.unvalued
@@ -45,8 +48,8 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
           <h1>Cartera</h1>
         </div>
         <div className="empty">
-          <p>Todavía no hay nada que vigilar.</p>
-          <p>Añade tu primera compra y aquí verás tus posiciones, lo que te costaron y tus plusvalías por año.</p>
+          <p>Tu cartera sale de tus movimientos.</p>
+          <p>Añade tu primera compra y aquí verás lo que tienes ahora y, cuando vendas, tu histórico con las plusvalías por año.</p>
           <button className="btn primary" onClick={onAdd}>
             {hasAssets ? 'Añadir movimiento' : 'Añadir primera compra'}
           </button>
@@ -59,6 +62,22 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
 
   return (
     <>
+      <div className="segmented" role="radiogroup" aria-label="Vista de la cartera" style={{ marginBottom: 20 }}>
+        {(
+          [
+            ['activa', 'Activa'],
+            ['historico', 'Histórico'],
+          ] as const
+        ).map(([id, label]) => (
+          <label key={id}>
+            <input type="radio" name="cartera-view" value={id} checked={view === id} onChange={() => setView(id)} />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+
+      {view === 'activa' && (
+        <>
       <p className="summary">
         {valuedCount > 0 ? (
           <>
@@ -74,21 +93,13 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
             )}
             .
           </>
-        ) : (
+        ) : positions.length > 0 ? (
           <>
             Tienes <strong className="num">{formatMoney(totalCostEur)}</strong> invertidos en{' '}
             {positions.length === 1 ? 'un activo' : `${positions.length} activos`}.
           </>
-        )}
-        {thisYear && !thisYear.netGainEur.isZero() && (
-          <>
-            {' '}
-            Este año llevas{' '}
-            <strong className={`num ${thisYear.netGainEur.isNeg() ? 'loss' : 'gain'}`}>
-              {formatSignedMoney(thisYear.netGainEur)}
-            </strong>{' '}
-            en ventas.
-          </>
+        ) : (
+          'No tienes posiciones abiertas.'
         )}
       </p>
       {valuation.unvalued > 0 && valuedCount > 0 && (
@@ -97,6 +108,7 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
           y no cuentan en el valor total. Les falta el precio (ponlo a mano en Activos) o el tipo de cambio (actualiza).
         </p>
       )}
+
 
       {issues.length > 0 && (
         <div className="notice" role="alert">
@@ -172,6 +184,27 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
         </section>
       )}
 
+        </>
+      )}
+
+      {view === 'historico' && (
+        <>
+      <p className="summary">
+        {thisYear ? (
+          <>
+            En {thisYear.year} llevas{' '}
+            <strong className={`num ${thisYear.netGainEur.isNeg() ? 'loss' : 'gain'}`}>
+              {formatSignedMoney(thisYear.netGainEur)}
+            </strong>{' '}
+            en ventas.
+          </>
+        ) : years.length > 0 ? (
+          'Este año no has vendido nada.'
+        ) : (
+          'Todavía no has vendido nada.'
+        )}
+      </p>
+
       {years.length > 0 && (
         <section>
           <h2>Resultados por año</h2>
@@ -205,6 +238,58 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
             Orientativo. Aún no aplica la regla de los dos meses ni los traspasos entre fondos; compruébalo antes de usarlo en la declaración.
           </p>
         </section>
+      )}
+      {portfolio.sales.length > 0 && (
+        <section>
+          <h2>Ventas</h2>
+          <ul className="rows">
+            {[...portfolio.sales]
+              .sort((a, b) => (a.date < b.date ? 1 : -1))
+              .map((sale) => (
+                <li key={sale.movementId}>
+                  <div className="row">
+                    <span className="row-title">{sale.asset.name}</span>
+                    <span className="row-end num">
+                      <strong>{formatMoney(sale.proceedsEur)}</strong>
+                    </span>
+                    <span className="row-sub num">
+                      {dateFmt.format(new Date(sale.date))} · {formatQuantity(sale.quantity)} títulos
+                    </span>
+                    <span className={`row-sub row-end num ${sale.gainEur.isNeg() ? 'loss' : 'gain'}`}>
+                      {formatSignedMoney(sale.gainEur)}
+                    </span>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+
+      {portfolio.income.length > 0 && (
+        <section>
+          <h2>Dividendos y cupones</h2>
+          <ul className="rows">
+            {[...portfolio.income]
+              .sort((a, b) => (a.date < b.date ? 1 : -1))
+              .map((i) => (
+                <li key={i.movementId}>
+                  <div className="row">
+                    <span className="row-title">{i.asset.name}</span>
+                    <span className="row-end num">
+                      <strong>{formatMoney(i.netEur)}</strong>
+                    </span>
+                    <span className="row-sub num">
+                      {dateFmt.format(new Date(i.date))} · {i.type === 'cupon' ? 'Cupón' : 'Dividendo'}
+                    </span>
+                    <span className="row-sub row-end num">Bruto {formatMoney(i.grossEur)}</span>
+                  </div>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+
+        </>
       )}
     </>
   )

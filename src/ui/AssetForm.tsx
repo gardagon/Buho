@@ -10,10 +10,12 @@ export const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CAD', 'SEK', 'NOK
 interface Props {
   asset?: Asset
   movementCount?: number
+  /** Valor nuevo que se da de alta para seguirlo. */
+  defaultWatched?: boolean
   onClose: (savedId?: string) => void
 }
 
-export function AssetForm({ asset, movementCount = 0, onClose }: Props) {
+export function AssetForm({ asset, movementCount = 0, defaultWatched = false, onClose }: Props) {
   const toast = useToast()
   const [name, setName] = useState(asset?.name ?? '')
   const [type, setType] = useState<AssetType>(asset?.type ?? 'accion')
@@ -24,7 +26,7 @@ export function AssetForm({ asset, movementCount = 0, onClose }: Props) {
   const [note, setNote] = useState(asset?.note ?? '')
   const [manualPrice, setManualPrice] = useState(toInputValue(asset?.manualPrice))
   const [manualDate, setManualDate] = useState(asset?.manualPriceDate ?? new Date().toISOString().slice(0, 10))
-  const [watched, setWatched] = useState(asset?.watched ?? false)
+  const [watched, setWatched] = useState(asset?.watched ?? defaultWatched)
   const [tried, setTried] = useState(false)
 
   const isinOk = isin.trim() === '' || /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin.trim().toUpperCase())

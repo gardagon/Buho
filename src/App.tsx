@@ -13,9 +13,9 @@ import { Movimientos } from './ui/screens/Movimientos'
 import { Seguimiento } from './ui/screens/Seguimiento'
 
 const ROUTES = [
+  { id: 'seguimiento', label: 'Seguimiento', Icon: IconSeguimiento },
   { id: 'cartera', label: 'Cartera', Icon: IconCartera },
   { id: 'movimientos', label: 'Movimientos', Icon: IconMovimientos },
-  { id: 'seguimiento', label: 'Seguimiento', Icon: IconSeguimiento },
   { id: 'activos', label: 'Activos', Icon: IconActivos },
   { id: 'ajustes', label: 'Ajustes', Icon: IconAjustes },
 ] as const
@@ -23,12 +23,12 @@ type Route = (typeof ROUTES)[number]['id']
 
 function readRoute(): Route {
   const h = location.hash.replace(/^#\/?/, '')
-  return (ROUTES.find((r) => r.id === h)?.id ?? 'cartera') as Route
+  return (ROUTES.find((r) => r.id === h)?.id ?? 'seguimiento') as Route
 }
 
 type Editing =
   | { kind: 'movement'; movement?: Movement; assetId?: string }
-  | { kind: 'asset'; asset?: Asset }
+  | { kind: 'asset'; asset?: Asset; watched?: boolean }
   | null
 
 export function App() {
@@ -92,7 +92,11 @@ export function App() {
           />
         )}
         {route === 'seguimiento' && (
-          <Seguimiento assets={assets} onOpen={(a) => setEditing({ kind: 'asset', asset: a })} />
+          <Seguimiento
+            assets={assets}
+            onOpen={(a) => setEditing({ kind: 'asset', asset: a })}
+            onAdd={() => setEditing({ kind: 'asset', watched: true })}
+          />
         )}
         {route === 'activos' && (
           <Activos
@@ -123,10 +127,11 @@ export function App() {
       {editing?.kind === 'asset' && (
         <AssetForm
           asset={editing.asset}
+          defaultWatched={editing.watched}
           movementCount={editing.asset ? movements.filter((m) => m.assetId === editing.asset!.id).length : 0}
           onClose={(savedId) => {
             // Si era el primer activo, enlazamos directamente con su primera compra.
-            if (!editing.asset && savedId && movements.length === 0) setEditing({ kind: 'movement', assetId: savedId })
+            if (!editing.asset && !editing.watched && savedId && movements.length === 0) setEditing({ kind: 'movement', assetId: savedId })
             else setEditing(null)
           }}
         />
