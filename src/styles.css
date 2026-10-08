@@ -478,3 +478,21 @@ dialog.sheet[open] { animation: rise 0.22s ease-out; }
 .refresh-line p { margin: 0; }
 
 .list-title { font-size: var(--step-0); margin: 16px 0 6px; }
+
+/* ---------- Indicador de carga ---------- */
+
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: 8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.15em;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+.sheet-body[inert] { opacity: 0.6; }
+.busy-note { margin: 0; padding: 8px 16px 0; }

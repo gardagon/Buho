@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 interface Props {
   title: string
@@ -6,11 +6,22 @@ interface Props {
   children: ReactNode
   footer: ReactNode
   onSubmit: () => void
+  /** Guardando: no se puede cerrar ni editar hasta que termine. */
+  busy?: boolean
 }
 
 /** Hoja modal: sube desde abajo en el móvil, centrada en pantallas grandes. */
-export function Sheet({ title, onClose, children, footer, onSubmit }: Props) {
+export function Sheet({ title, onClose, children, footer, onSubmit, busy = false }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
+  const [slow, setSlow] = useState(false)
+
+  // Si guardar tarda, se explica por qué puede ser y qué hacer.
+  useEffect(() => {
+    setSlow(false)
+    if (!busy) return
+    const t = setTimeout(() => setSlow(true), 3000)
+    return () => clearTimeout(t)
+  }, [busy])
 
   useEffect(() => {
     const dlg = ref.current
@@ -25,26 +36,35 @@ export function Sheet({ title, onClose, children, footer, onSubmit }: Props) {
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault()
-        onClose()
+        if (!busy) onClose()
       }}
       onClick={(e) => {
-        if (e.target === ref.current) onClose()
+        if (!busy && e.target === ref.current) onClose()
       }}
     >
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          onSubmit()
+          if (!busy) onSubmit()
         }}
         noValidate
+        aria-busy={busy}
       >
         <div className="sheet-head">
           <h2>{title}</h2>
-          <button type="button" className="btn ghost small" onClick={onClose}>
+          <button type="button" className="btn ghost small" onClick={onClose} disabled={busy}>
             Cerrar
           </button>
         </div>
-        <div className="sheet-body">{children}</div>
+        <div className="sheet-body" inert={busy}>
+          {children}
+        </div>
+        {busy && slow && (
+          <p className="busy-note small muted" role="status">
+            Está tardando más de lo normal. Si tienes Buho abierto en otra pestaña o en la app instalada, ciérrala y
+            este guardado terminará enseguida.
+          </p>
+        )}
         <div className="sheet-foot">{footer}</div>
       </form>
     </dialog>

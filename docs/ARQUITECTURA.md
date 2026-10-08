@@ -89,6 +89,10 @@ En el formulario, las comisiones y el total (pagado o recibido) van en **EUR**, 
 
 Si un mismo activo tiene compras con el precio en divisas distintas, `Position.costCurrency` pasa a EUR para no mezclar divisas en el coste medio.
 
+## Guardado desde los formularios
+
+Al guardar o eliminar, `Sheet` entra en estado `busy`: el botón muestra un círculo de carga y «Guardando…», el contenido se bloquea (`inert`) y no se puede cerrar (ni con «Cerrar», Escape o pulsando fuera) hasta que IndexedDB confirma la escritura. Si tarda más de 3 s se avisa de la causa más habitual: Buho abierto a la vez en otra pestaña o en la app instalada, que se esperan entre sí para escribir. Si el guardado falla, el formulario se desbloquea y se conserva lo escrito.
+
 ## Cálculo de cartera
 
 `computePortfolio(assets, movements)` es una función pura:

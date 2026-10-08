@@ -6,6 +6,7 @@ import { completeTrade } from '../domain/trade'
 import { MOVEMENT_TYPES, isTrade, type Asset, type Movement, type MovementType } from '../domain/types'
 import { AssetForm } from './AssetForm'
 import { Field, Sheet } from './Sheet'
+import { Spinner } from './Spinner'
 import { useToast } from './Toast'
 
 interface Props {
@@ -53,6 +54,7 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   const [note, setNote] = useState(movement?.note ?? '')
   const [tried, setTried] = useState(false)
   const [creatingAsset, setCreatingAsset] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const asset = assets.find((a) => a.id === assetId)
   const currency = currencyChoice ?? asset?.currency ?? 'EUR'
@@ -124,35 +126,49 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
 
   async function submit() {
     setTried(true)
-    if (!valid || !asset) return
+    if (!valid || !asset || saving) return
+    setSaving(true)
     // Las comisiones se piden en EUR; se guardan en la divisa del movimiento.
     const feesStored = trade ? (t!.feesEur ?? d(0)).mul(d(fx!)).toDecimalPlaces(8).toString() : fe!
-    await saveMovement(
-      {
-        assetId: asset.id,
-        type,
-        date,
-        quantity: trade ? q! : undefined,
-        price: trade ? t!.price!.toString() : undefined,
-        amount: trade ? undefined : am!,
-        currency,
-        fxRate: fx!,
-        fees: feesStored,
-        // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
-        totalEur: trade && totalRaw ? totalRaw : undefined,
-        withholding: trade ? '0' : wh!,
-        account: account.trim() || undefined,
-        note: note.trim() || undefined,
-      },
-      movement?.id,
-    )
+    try {
+      await saveMovement(
+        {
+          assetId: asset.id,
+          type,
+          date,
+          quantity: trade ? q! : undefined,
+          price: trade ? t!.price!.toString() : undefined,
+          amount: trade ? undefined : am!,
+          currency,
+          fxRate: fx!,
+          fees: feesStored,
+          // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
+          totalEur: trade && totalRaw ? totalRaw : undefined,
+          withholding: trade ? '0' : wh!,
+          account: account.trim() || undefined,
+          note: note.trim() || undefined,
+        },
+        movement?.id,
+      )
+    } catch (e) {
+      setSaving(false)
+      toast(`No se pudo guardar el movimiento: ${e instanceof Error ? e.message : 'error desconocido'}. Inténtalo de nuevo.`)
+      return
+    }
     toast(movement ? 'Movimiento guardado' : ADDED[type])
     onClose()
   }
 
   async function remove() {
-    if (!movement || !confirm('¿Eliminar este movimiento?')) return
-    await deleteMovement(movement.id)
+    if (!movement || saving || !confirm('¿Eliminar este movimiento?')) return
+    setSaving(true)
+    try {
+      await deleteMovement(movement.id)
+    } catch {
+      setSaving(false)
+      toast('No se pudo eliminar el movimiento. Inténtalo de nuevo.')
+      return
+    }
     toast('Movimiento eliminado')
     onClose()
   }
@@ -173,16 +189,18 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
       title={movement ? 'Editar movimiento' : 'Nuevo movimiento'}
       onClose={onClose}
       onSubmit={submit}
+      busy={saving}
       footer={
         <>
           {movement && (
-            <button type="button" className="btn danger" onClick={remove}>
+            <button type="button" className="btn danger" onClick={remove} disabled={saving}>
               Eliminar
             </button>
           )}
           <span className="spacer" />
-          <button type="submit" className="btn primary">
-            {movement ? 'Guardar movimiento' : 'Añadir movimiento'}
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving && <Spinner />}
+            {saving ? 'Guardando…' : movement ? 'Guardar movimiento' : 'Añadir movimiento'}
           </button>
         </>
       }

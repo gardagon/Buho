@@ -3,6 +3,7 @@ import { deleteAsset, saveAsset } from '../data/repo'
 import { parseUserNumber, toInputValue } from '../domain/numbers'
 import { ASSET_TYPES, type Asset, type AssetType } from '../domain/types'
 import { Field, Sheet } from './Sheet'
+import { Spinner } from './Spinner'
 import { useToast } from './Toast'
 
 export const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CAD', 'SEK', 'NOK', 'DKK', 'AUD', 'HKD']
@@ -28,6 +29,7 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
   const [manualDate, setManualDate] = useState(asset?.manualPriceDate ?? new Date().toISOString().slice(0, 10))
   const [watched, setWatched] = useState(asset?.watched ?? defaultWatched)
   const [tried, setTried] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const isinOk = isin.trim() === '' || /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin.trim().toUpperCase())
   const priceParsed = manualPrice.trim() === '' ? undefined : parseUserNumber(manualPrice)
@@ -36,31 +38,46 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
 
   async function submit() {
     setTried(true)
-    if (!valid) return
-    const id = await saveAsset(
-      {
-        name: name.trim(),
-        type,
-        currency: currency.trim().toUpperCase(),
-        ticker: ticker.trim().toUpperCase() || undefined,
-        isin: isin.trim().toUpperCase() || undefined,
-        market: market.trim() || undefined,
-        note: note.trim() || undefined,
-        manualPrice: priceParsed || undefined,
-        manualPriceDate: priceParsed ? manualDate : undefined,
-        watched: watched || undefined,
-      },
-      asset?.id,
-    )
+    if (!valid || saving) return
+    setSaving(true)
+    let id: string
+    try {
+      id = await saveAsset(
+        {
+          name: name.trim(),
+          type,
+          currency: currency.trim().toUpperCase(),
+          ticker: ticker.trim().toUpperCase() || undefined,
+          isin: isin.trim().toUpperCase() || undefined,
+          market: market.trim() || undefined,
+          note: note.trim() || undefined,
+          manualPrice: priceParsed || undefined,
+          manualPriceDate: priceParsed ? manualDate : undefined,
+          watched: watched || undefined,
+        },
+        asset?.id,
+      )
+    } catch (e) {
+      setSaving(false)
+      toast(`No se pudo guardar el activo: ${e instanceof Error ? e.message : 'error desconocido'}. Inténtalo de nuevo.`)
+      return
+    }
     toast(asset ? 'Activo guardado' : 'Activo añadido')
     onClose(id)
   }
 
   async function remove() {
-    if (!asset) return
+    if (!asset || saving) return
     const extra = movementCount > 0 ? ` y sus ${movementCount} movimientos` : ''
     if (!confirm(`¿Eliminar ${asset.name}${extra}?`)) return
-    await deleteAsset(asset.id)
+    setSaving(true)
+    try {
+      await deleteAsset(asset.id)
+    } catch {
+      setSaving(false)
+      toast('No se pudo eliminar el activo. Inténtalo de nuevo.')
+      return
+    }
     toast('Activo eliminado')
     onClose()
   }
@@ -70,16 +87,18 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
       title={asset ? 'Editar activo' : 'Nuevo activo'}
       onClose={() => onClose()}
       onSubmit={submit}
+      busy={saving}
       footer={
         <>
           {asset && (
-            <button type="button" className="btn danger" onClick={remove}>
+            <button type="button" className="btn danger" onClick={remove} disabled={saving}>
               Eliminar
             </button>
           )}
           <span className="spacer" />
-          <button type="submit" className="btn primary">
-            {asset ? 'Guardar activo' : 'Añadir activo'}
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving && <Spinner />}
+            {saving ? 'Guardando…' : asset ? 'Guardar activo' : 'Añadir activo'}
           </button>
         </>
       }
