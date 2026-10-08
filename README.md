@@ -74,6 +74,14 @@ npm test                     # tests de cálculo, fusión y base de datos
 npm run build
 ```
 
+### Documentación del proyecto
+
+- [`CLAUDE.md`](CLAUDE.md): reglas para desarrollar con Claude Code (también útiles para personas)
+- [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md): cómo está montada la app
+- [`docs/DECISIONES.md`](docs/DECISIONES.md): por qué se eligió cada cosa
+- [`docs/FISCALIDAD.md`](docs/FISCALIDAD.md): reglas de cálculo de plusvalías en España
+- [`docs/ROADMAP.md`](docs/ROADMAP.md): qué está hecho y qué falta
+
 ### Estructura
 
 ```
