@@ -3,6 +3,7 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import type { Asset, Movement } from './domain/types'
 import { useSync } from './sync/SyncContext'
 import { AssetForm } from './ui/AssetForm'
+import { FollowSheet } from './ui/FollowSheet'
 import { usePortfolio } from './ui/hooks'
 import { IconActivos, IconAjustes, IconCartera, IconMovimientos, IconSeguimiento } from './ui/icons'
 import { MovementForm } from './ui/MovementForm'
@@ -29,6 +30,7 @@ function readRoute(): Route {
 type Editing =
   | { kind: 'movement'; movement?: Movement; assetId?: string }
   | { kind: 'asset'; asset?: Asset; watched?: boolean }
+  | { kind: 'follow' }
   | null
 
 export function App() {
@@ -95,7 +97,7 @@ export function App() {
           <Seguimiento
             assets={assets}
             onOpen={(a) => setEditing({ kind: 'asset', asset: a })}
-            onAdd={() => setEditing({ kind: 'asset', watched: true })}
+            onAdd={() => setEditing({ kind: 'follow' })}
           />
         )}
         {route === 'activos' && (
@@ -122,6 +124,13 @@ export function App() {
           assets={assets}
           movements={movements}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {editing?.kind === 'follow' && (
+        <FollowSheet
+          assets={assets}
+          onClose={() => setEditing(null)}
+          onManual={() => setEditing({ kind: 'asset', watched: true })}
         />
       )}
       {editing?.kind === 'asset' && (

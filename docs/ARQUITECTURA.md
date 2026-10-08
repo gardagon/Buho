@@ -56,7 +56,7 @@ src/
     types.ts         PriceProvider, QuoteResult
     finnhub.ts       Proveedor Finnhub (REST)
     fx.ts            Tipos de cambio del BCE vía Frankfurter
-    service.ts       refreshQuotes: pide cotizaciones y cambios y los guarda
+    service.ts       refreshQuotes, searchSecurities (búsqueda con cotización) y followSecurity
     QuotesContext.tsx  Estado para React; actualiza al abrir la app
   ui/
     screens/         Seguimiento (inicio), Cartera (activa e histórico), Movimientos, Activos, Ajustes
@@ -122,6 +122,7 @@ interface PriceProvider {
 ```
 
 - Un proveedor por archivo en `src/quotes/`. Hoy solo Finnhub (REST). El ticker se envía tal cual lo escribió el usuario; la divisa de la cotización es la del activo.
+- «Seguir un valor» (`ui/FollowSheet.tsx`) busca por nombre o ticker con `/search` de Finnhub, muestra la cotización de cada resultado y, al elegir uno, crea el activo con `watched` (o reutiliza el que ya tenga ese ticker). Necesita la clave; sin ella ofrece seguir un activo existente o añadirlo a mano. La divisa se estima por el sufijo de bolsa y se puede corregir en el activo.
 - `refreshQuotes` (`quotes/service.ts`) pide los activos en cartera o marcados con `watched`, guarda cada `Quote` en la tabla `quotes` y los tipos de cambio en `meta`. Un fallo en un activo no frena a los demás; los motivos se muestran en Ajustes.
 - Los tipos de cambio (`FxRates`) son unidades de divisa por 1 EUR, como `Movement.fxRate`. Se piden a Frankfurter (BCE, sin clave).
 - `valuePositions` (`domain/valuation.ts`) valora las posiciones de `computePortfolio` sin tocar el FIFO: precio × cantidad ÷ cambio actual. El total solo suma las posiciones que se pueden valorar y compara contra el coste de esas mismas.

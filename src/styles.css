@@ -476,3 +476,5 @@ dialog.sheet[open] { animation: rise 0.22s ease-out; }
   margin: 0 0 8px;
 }
 .refresh-line p { margin: 0; }
+
+.list-title { font-size: var(--step-0); margin: 16px 0 6px; }

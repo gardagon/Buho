@@ -30,6 +30,7 @@
 - [x] Precio manual para activos sin cotización
 - [x] Cartera: valor de mercado, plusvalía latente por posición y total
 - [x] Pantalla de Seguimiento con los valores seleccionados, como pantalla de inicio
+- [x] Buscador de valores al seguir (Finnhub `/search`) con cotización en cada resultado
 - [x] Cartera con vista activa e histórico (ventas, dividendos y resultados por año)
 - [ ] Probar con una clave real de Finnhub y con Frankfurter desde el navegador (CORS); solo se ha probado con respuestas simuladas
 - [ ] Segundo proveedor que cubra BME y Xetra (Twelve Data u otro) si el precio manual se queda corto

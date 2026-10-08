@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db, getMeta, setMeta } from '../data/db'
 import { QUOTE_META, loadFxRates, saveAsset, saveMovement, wipeLocalData } from '../data/repo'
 import type { Asset } from '../domain/types'
-import { createFinnhubProvider } from './finnhub'
+import { createFinnhubProvider, guessCurrency, titleCase } from './finnhub'
 import { fetchFxRates } from './fx'
-import { refreshQuotes } from './service'
+import { followSecurity, refreshQuotes, searchSecurities } from './service'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 const asset = (ticker?: string, extra: Partial<Asset> = {}): Asset => ({
@@ -118,5 +118,69 @@ describe('refreshQuotes', () => {
     })
     expect(report.fxError).toMatch(/Sin conexión/)
     expect((await loadFxRates())?.rates.USD).toBe('1.2')
+  })
+})
+
+describe('búsqueda de valores', () => {
+  beforeEach(wipeLocalData)
+
+  const searchFetcher = async (url: RequestInfo | URL) => {
+    const u = String(url)
+    if (u.includes('/search')) {
+      return json({
+        count: 3,
+        result: [
+          { description: 'APPLE INC', symbol: 'AAPL', type: 'Common Stock' },
+          { description: 'APPLE INC', symbol: 'AAPL', type: 'Common Stock' },
+          { description: 'BANCO SANTANDER SA', symbol: 'SAN.MC', type: 'Common Stock' },
+        ],
+      })
+    }
+    return u.includes('SAN.MC') ? json({ error: 'sin acceso' }, 403) : json({ c: 190, pc: 188, t: 1_790_000_000 })
+  }
+
+  it('estima la divisa por el sufijo de bolsa', () => {
+    expect(guessCurrency('AAPL')).toBe('USD')
+    expect(guessCurrency('SAN.MC')).toBe('EUR')
+    expect(guessCurrency('SAP.DE')).toBe('EUR')
+    expect(guessCurrency('VOD.L')).toBe('GBP')
+  })
+
+  it('pasa los nombres de MAYÚSCULAS a título y respeta las siglas', () => {
+    expect(titleCase('BANCO SANTANDER SA')).toBe('Banco Santander SA')
+    expect(titleCase('APPLE HOSPITALITY REIT INC')).toBe('Apple Hospitality REIT Inc')
+  })
+
+  it('exige la clave de Finnhub', async () => {
+    await expect(searchSecurities('apple', searchFetcher)).rejects.toThrow(/clave/)
+  })
+
+  it('devuelve resultados sin duplicados y con cotización cuando el plan la da', async () => {
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    const r = await searchSecurities('apple', searchFetcher)
+    expect(r.map((x) => x.hit.symbol)).toEqual(['AAPL', 'SAN.MC'])
+    expect(r[0].hit.name).toBe('Apple Inc')
+    expect(r[0].quote?.price).toBe('190')
+    expect(r[1].quote).toBeUndefined()
+    expect(r[1].hit.currency).toBe('EUR')
+  })
+
+  it('seguir un valor crea el activo con su cotización', async () => {
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    const [apple] = await searchSecurities('apple', searchFetcher)
+    const id = await followSecurity(apple)
+    const a = await db.assets.get(id)
+    expect(a).toMatchObject({ name: 'Apple Inc', ticker: 'AAPL', currency: 'USD', watched: true })
+    expect((await db.quotes.get(id))?.price).toBe('190')
+  })
+
+  it('si el activo ya existe, lo reutiliza y no lo duplica', async () => {
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    const existing = await saveAsset({ name: 'Mi Apple', type: 'accion', currency: 'USD', ticker: 'AAPL' })
+    const [apple] = await searchSecurities('apple', searchFetcher)
+    const id = await followSecurity(apple)
+    expect(id).toBe(existing)
+    expect(await db.assets.count()).toBe(1)
+    expect(await db.assets.get(id)).toMatchObject({ name: 'Mi Apple', watched: true })
   })
 })
