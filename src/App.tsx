@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import type { Asset, Movement } from './domain/types'
 import { useSync } from './sync/SyncContext'
 import { AssetForm } from './ui/AssetForm'
 import { FollowSheet } from './ui/FollowSheet'
+import { PositionDetail } from './ui/PositionDetail'
 import { PriceDetail } from './ui/PriceDetail'
 import { usePortfolio } from './ui/hooks'
+import { useSwipeNav } from './ui/useSwipeNav'
 import { IconActivos, IconAjustes, IconCartera, IconMovimientos, IconSeguimiento } from './ui/icons'
 import { MovementForm } from './ui/MovementForm'
 import { Activos } from './ui/screens/Activos'
@@ -22,6 +24,7 @@ const ROUTES = [
   { id: 'ajustes', label: 'Ajustes', Icon: IconAjustes },
 ] as const
 type Route = (typeof ROUTES)[number]['id']
+const ROUTE_IDS: readonly string[] = ROUTES.map((r) => r.id)
 
 function readRoute(): Route {
   const h = location.hash.replace(/^#\/?/, '')
@@ -33,6 +36,7 @@ type Editing =
   | { kind: 'asset'; asset?: Asset; watched?: boolean }
   | { kind: 'follow' }
   | { kind: 'prices'; asset: Asset }
+  | { kind: 'position'; assetId: string }
   | null
 
 export function App() {
@@ -41,15 +45,28 @@ export function App() {
   const [assetFilter, setAssetFilter] = useState('')
   const { assets, movements, portfolio } = usePortfolio()
 
+  // Dirección del último cambio de pestaña, para animar la entrada de la pantalla nueva.
+  const [slide, setSlide] = useState<'left' | 'right' | null>(null)
+  const current = useRef(route)
+
   useEffect(() => {
-    const on = () => setRoute(readRoute())
+    const on = () => {
+      const next = readRoute()
+      const order = ROUTES.map((r) => r.id as string)
+      setSlide(order.indexOf(next) > order.indexOf(current.current) ? 'left' : 'right')
+      current.current = next
+      setRoute(next)
+    }
     window.addEventListener('hashchange', on)
     return () => window.removeEventListener('hashchange', on)
   }, [])
 
-  const go = (r: Route) => {
+  const go = useCallback((r: Route) => {
     location.hash = `/${r}`
-  }
+  }, [])
+
+  // Deslizar a los lados cambia de pestaña, en el orden de la barra de navegación.
+  useSwipeNav(ROUTE_IDS, route, go as (id: string) => void)
 
   const addMovement = () =>
     assets.length === 0 ? setEditing({ kind: 'asset' }) : setEditing({ kind: 'movement', assetId: assetFilter || undefined })
@@ -73,15 +90,12 @@ export function App() {
         ))}
       </nav>
 
-      <main>
+      <main key={route} className={slide ? `slide-${slide}` : undefined}>
         {route === 'cartera' && (
           <Cartera
             portfolio={portfolio}
             onAdd={() => go('movimientos')}
-            onOpenAsset={(id) => {
-              setAssetFilter(id)
-              go('movimientos')
-            }}
+            onOpenAsset={(id) => setEditing({ kind: 'position', assetId: id })}
           />
         )}
         {route === 'movimientos' && (
@@ -127,6 +141,25 @@ export function App() {
           onClose={() => setEditing(null)}
         />
       )}
+      {editing?.kind === 'position' &&
+        (() => {
+          const position = portfolio.positions.find((p) => p.asset.id === editing.assetId)
+          if (!position) return null
+          return (
+            <PositionDetail
+              position={position}
+              portfolio={portfolio}
+              movements={movements}
+              onClose={() => setEditing(null)}
+              onOpenMovements={() => {
+                setAssetFilter(editing.assetId)
+                setEditing(null)
+                go('movimientos')
+              }}
+              onOpenPrices={() => setEditing({ kind: 'prices', asset: position.asset })}
+            />
+          )
+        })()}
       {editing?.kind === 'prices' && (
         <PriceDetail
           asset={assets.find((a) => a.id === editing.asset.id) ?? editing.asset}

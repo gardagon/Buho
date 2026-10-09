@@ -87,6 +87,18 @@ export function toEur(amount: Decimal, fxRate: string | undefined): Decimal {
   return amount.div(fx)
 }
 
+/** Coste de adquisición en EUR de una compra: lo realmente cobrado, o cantidad × precio + comisiones ÷ cambio. */
+export function buyCostEur(m: Movement): Decimal {
+  if (m.totalEur) return d(m.totalEur)
+  return toEur(d(m.quantity).mul(d(m.price)).plus(d(m.fees)), m.fxRate)
+}
+
+/** Valor de transmisión en EUR de una venta: lo realmente ingresado, o cantidad × precio − comisiones ÷ cambio. */
+export function sellProceedsEur(m: Movement): Decimal {
+  if (m.totalEur) return d(m.totalEur)
+  return toEur(d(m.quantity).mul(d(m.price)).minus(d(m.fees)), m.fxRate)
+}
+
 export function sortMovements(movements: Movement[]): Movement[] {
   return [...movements].sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1
@@ -122,7 +134,7 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
       }
       const gross = qty.mul(d(m.price)).plus(fees)
       // Si se conoce lo realmente cobrado en EUR, ese es el coste de adquisición.
-      const costEur = m.totalEur ? d(m.totalEur) : toEur(gross, m.fxRate)
+      const costEur = buyCostEur(m)
       lots.push({
         movementId: m.id,
         date: m.date,
@@ -139,7 +151,7 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
       }
       const soldQty = remaining
       // Si se conoce lo realmente ingresado en EUR, ese es el valor de transmisión.
-      const proceedsEur = m.totalEur ? d(m.totalEur) : toEur(soldQty.mul(d(m.price)).minus(fees), m.fxRate)
+      const proceedsEur = sellProceedsEur(m)
       let costEur = ZERO
       const matched: RealizedSale['matched'] = []
       while (remaining.gt(0) && lots.length > 0) {

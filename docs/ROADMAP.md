@@ -44,6 +44,8 @@
 - [x] Precio medio real por título con comisiones incluidas
 - [x] Histórico de precios manuales por valor, con gráfico, y precio en dólares o euros con su equivalente
 - [x] Cambio del BCE del día de cada movimiento (Frankfurter)
+- [x] Cambio de pestaña deslizando
+- [x] Ficha de posición: rendimiento a 1 semana, 1 mes, 1 año, 2 y 5 años, y detalle por compra con sus ventas FIFO
 - [ ] Alinear el resto del modelo con la hoja de cálculo del usuario (campos, cuentas, divisas)
 
 ### Fase 5: fiscalidad completa
