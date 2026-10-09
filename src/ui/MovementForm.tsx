@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { deleteMovement, saveMovement } from '../data/repo'
 import { Decimal, d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
 import { computePortfolio, toEur } from '../domain/portfolio'
 import { completeTrade } from '../domain/trade'
+import { fetchRateOn } from '../quotes/fx'
 import { MOVEMENT_TYPES, isTrade, type Asset, type Movement, type MovementType } from '../domain/types'
 import { AssetForm } from './AssetForm'
 import { Field, Sheet } from './Sheet'
@@ -23,6 +24,15 @@ const ADDED: Record<MovementType, string> = {
   dividendo: 'Dividendo añadido',
   cupon: 'Cupón añadido',
 }
+
+const KIND: Record<MovementType, { noun: string; article: 'Nueva' | 'Nuevo' }> = {
+  compra: { noun: 'compra', article: 'Nueva' },
+  venta: { noun: 'venta', article: 'Nueva' },
+  dividendo: { noun: 'dividendo', article: 'Nuevo' },
+  cupon: { noun: 'cupón', article: 'Nuevo' },
+}
+
+const dayFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' })
 
 const today = () => {
   const n = new Date()
@@ -55,12 +65,27 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   const [tried, setTried] = useState(false)
   const [creatingAsset, setCreatingAsset] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [ecb, setEcb] = useState<{ key: string; rate: string; date: string } | null>(null)
 
   const asset = assets.find((a) => a.id === assetId)
   const currency = currencyChoice ?? asset?.currency ?? 'EUR'
   const currencyOptions = [...new Set([asset?.currency ?? 'EUR', 'EUR', 'USD'])]
   const needsFx = currency !== 'EUR'
   const trade = isTrade(type)
+
+  // Cambio del BCE del día del movimiento (Frankfurter): se usa si no se escribe uno.
+  useEffect(() => {
+    if (!needsFx || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+    let cancelled = false
+    fetchRateOn(currency, date).then(
+      (r) => !cancelled && setEcb({ key: `${currency}|${date}`, ...r }),
+      () => {}, // sin conexión: se calcula el cambio efectivo con el total, o se escribe a mano
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [needsFx, currency, date])
+  const ecbNow = ecb && ecb.key === `${currency}|${date}` ? ecb : null
 
   const accounts = useMemo(
     () => [...new Set(movements.map((m) => m.account).filter(Boolean) as string[])].sort(),
@@ -91,12 +116,12 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
         currency,
         quantity: q ? d(q) : undefined,
         price: pr ? d(pr) : undefined,
-        fxRate: fxRaw ? d(fxRaw) : undefined,
+        fxRate: fxRaw ? d(fxRaw) : ecbNow ? d(ecbNow.rate) : undefined,
         feesEur: feesRaw ? d(feesRaw) : undefined,
         totalEur: totalRaw ? d(totalRaw) : undefined,
       })
     : null
-  const fx = trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? fxRaw : '1'
+  const fx = trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? ecbNow?.rate) : '1'
 
   const errors: Record<string, boolean> = {
     asset: !asset,
@@ -186,7 +211,8 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
 
   return (
     <Sheet
-      title={movement ? 'Editar movimiento' : 'Nuevo movimiento'}
+      title={movement ? `Editar ${KIND[type].noun}` : `${KIND[type].article} ${KIND[type].noun}`}
+      tone={type}
       onClose={onClose}
       onSubmit={submit}
       busy={saving}
@@ -200,14 +226,14 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
           <span className="spacer" />
           <button type="submit" className="btn primary" disabled={saving}>
             {saving && <Spinner />}
-            {saving ? 'Guardando…' : movement ? 'Guardar movimiento' : 'Añadir movimiento'}
+            {saving ? 'Guardando…' : movement ? `Guardar ${KIND[type].noun}` : `Añadir ${KIND[type].noun}`}
           </button>
         </>
       }
     >
       <div className="segmented" role="radiogroup" aria-label="Tipo de movimiento">
         {(Object.keys(MOVEMENT_TYPES) as MovementType[]).map((t) => (
-          <label key={t}>
+          <label key={t} data-tone={t}>
             <input type="radio" name="type" value={t} checked={type === t} onChange={() => {
                 if (isTrade(t) !== isTrade(type)) {
                   setFees('')
@@ -278,13 +304,21 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
             {needsFx && (
               <Field
                 label="Tipo de cambio"
-                hint={t?.derived.fxRate ? 'Calculado: incluye comisiones' : `${currency} por 1 EUR`}
+                hint={
+                  fxRaw
+                    ? `${currency} por 1 EUR`
+                    : ecbNow
+                      ? `Del BCE (${dayFmt.format(new Date(ecbNow.date + 'T12:00:00'))}). Puedes escribir el de tu bróker.`
+                      : t?.derived.fxRate
+                        ? 'Calculado: incluye comisiones'
+                        : `${currency} por 1 EUR`
+                }
               >
                 <input
                   inputMode="decimal"
                   value={fxRate}
                   onChange={(e) => setFxRate(e.target.value)}
-                  placeholder={calc(t?.derived.fxRate ? t.fxRate : undefined, 6) ?? '1,0850'}
+                  placeholder={ecbNow ? toInputValue(ecbNow.rate) : (calc(t?.derived.fxRate ? t.fxRate : undefined, 6) ?? '1,0850')}
                   aria-invalid={bad('fx')}
                 />
               </Field>
@@ -332,8 +366,17 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
               <input inputMode="decimal" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0" aria-invalid={bad('fees')} />
             </Field>
             {needsFx && (
-              <Field label="Tipo de cambio" hint={`${currency} por 1 EUR ese día`}>
-                <input inputMode="decimal" value={fxRate} onChange={(e) => setFxRate(e.target.value)} placeholder="1,0850" aria-invalid={bad('fx')} />
+              <Field
+                label="Tipo de cambio"
+                hint={ecbNow && !fxRaw ? `Del BCE (${dayFmt.format(new Date(ecbNow.date + 'T12:00:00'))})` : `${currency} por 1 EUR ese día`}
+              >
+                <input
+                  inputMode="decimal"
+                  value={fxRate}
+                  onChange={(e) => setFxRate(e.target.value)}
+                  placeholder={ecbNow ? toInputValue(ecbNow.rate) : '1,0850'}
+                  aria-invalid={bad('fx')}
+                />
               </Field>
             )}
           </div>

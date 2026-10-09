@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { computePortfolio } from './portfolio'
 import type { Asset, FxRates, Movement, Quote } from './types'
-import { dayChange, pickPrice, valuePositions } from './valuation'
+import { counterPrice, dayChange, pickPrice, priceHistory, valuePositions } from './valuation'
 
 const stamp = { createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }
 const asset = (id: string, currency: string, extra: Partial<Asset> = {}): Asset => ({
@@ -98,5 +98,66 @@ describe('dayChange', () => {
   it('devuelve undefined sin cierre anterior', () => {
     const p = pickPrice(asset('x', 'EUR'), quote('x', '102', 'EUR', '2026-10-08T10:00:00Z'))!
     expect(dayChange(p)).toBeUndefined()
+  })
+})
+
+describe('precio manual en otra divisa', () => {
+  it('respeta la divisa del precio manual y se valora con el cambio actual', () => {
+    // Activo en EUR con precio manual de Investing en dólares: 120 $ ÷ 1,2 = 100 € por título
+    const a = asset('etf', 'EUR', { manualPrice: '120', manualPriceCurrency: 'USD', manualPriceDate: '2026-10-08' })
+    const p = computePortfolio([a], [buy('etf', '10', '90', 'EUR', '1')])
+    const v = valuePositions(p.positions, new Map(), fx)
+    expect(v.rows[0].price?.currency).toBe('USD')
+    expect(v.rows[0].valueEur?.toString()).toBe('1000')
+  })
+})
+
+describe('counterPrice', () => {
+  it('un precio en dólares se ve también en euros', () => {
+    // 120 $ ÷ 1,2 = 100 €
+    const c = counterPrice(pickPrice(asset('x', 'USD', { manualPrice: '120', manualPriceDate: '2026-10-08' }))!, fx)
+    expect(c?.currency).toBe('EUR')
+    expect(c?.amount.toString()).toBe('100')
+  })
+
+  it('un precio en euros se ve también en dólares', () => {
+    // 100 € × 1,2 = 120 $
+    const c = counterPrice(pickPrice(asset('x', 'EUR', { manualPrice: '100', manualPriceDate: '2026-10-08' }))!, fx)
+    expect(c?.currency).toBe('USD')
+    expect(c?.amount.toString()).toBe('120')
+  })
+
+  it('sin tipo de cambio no inventa nada', () => {
+    const p = pickPrice(asset('x', 'GBP', { manualPrice: '10', manualPriceDate: '2026-10-08' }))!
+    expect(counterPrice(p, fx)).toBeUndefined()
+  })
+})
+
+describe('priceHistory', () => {
+  const point = (date: string, price: string, currency: string, fxRate?: string) => ({
+    id: date + currency, assetId: 'x', date, price, currency, fxRate, createdAt: '', updatedAt: '',
+  })
+
+  it('pasa a euros con el cambio de cada día, si se guardó', () => {
+    // 125 $ con cambio de ese día 1,25 → 100 € · 120 $ sin cambio guardado usa el actual 1,2 → 100 €
+    const h = priceHistory([point('2026-09-01', '125', 'USD', '1.25'), point('2026-10-01', '120', 'USD')], [], fx)
+    expect(h.map((x) => x.eur.toString())).toEqual(['100', '100'])
+  })
+
+  it('ordena por fecha y, si un día tiene cotización y precio manual, gana el manual', () => {
+    const market = [
+      { assetId: 'x', date: '2026-10-02', price: '90', currency: 'EUR' },
+      { assetId: 'x', date: '2026-10-01', price: '80', currency: 'EUR' },
+    ]
+    const h = priceHistory([point('2026-10-02', '95', 'EUR')], market, fx)
+    expect(h.map((x) => [x.date, x.eur.toString(), x.source])).toEqual([
+      ['2026-10-01', '80', 'mercado'],
+      ['2026-10-02', '95', 'manual'],
+    ])
+  })
+
+  it('deja fuera los puntos borrados y los de divisas sin cambio', () => {
+    const h = priceHistory([{ ...point('2026-10-01', '10', 'EUR'), deleted: true }, point('2026-10-02', '10', 'GBP')], [], fx)
+    expect(h).toEqual([])
   })
 })

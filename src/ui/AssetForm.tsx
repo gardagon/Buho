@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { deleteAsset, saveAsset } from '../data/repo'
-import { parseUserNumber, toInputValue } from '../domain/numbers'
+import { addPricePoint, deleteAsset, saveAsset } from '../data/repo'
+import { parseUserNumber } from '../domain/numbers'
+import { rateForPoint } from '../quotes/fx'
 import { ASSET_TYPES, type Asset, type AssetType } from '../domain/types'
 import { Field, Sheet } from './Sheet'
 import { Spinner } from './Spinner'
@@ -11,12 +12,14 @@ export const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CAD', 'SEK', 'NOK
 interface Props {
   asset?: Asset
   movementCount?: number
+  /** Abre la ficha con el histórico de precios (solo al editar). */
+  onOpenPrices?: () => void
   /** Valor nuevo que se da de alta para seguirlo. */
   defaultWatched?: boolean
   onClose: (savedId?: string) => void
 }
 
-export function AssetForm({ asset, movementCount = 0, defaultWatched = false, onClose }: Props) {
+export function AssetForm({ asset, movementCount = 0, defaultWatched = false, onOpenPrices, onClose }: Props) {
   const toast = useToast()
   const [name, setName] = useState(asset?.name ?? '')
   const [type, setType] = useState<AssetType>(asset?.type ?? 'accion')
@@ -25,8 +28,9 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
   const [isin, setIsin] = useState(asset?.isin ?? '')
   const [market, setMarket] = useState(asset?.market ?? '')
   const [note, setNote] = useState(asset?.note ?? '')
-  const [manualPrice, setManualPrice] = useState(toInputValue(asset?.manualPrice))
-  const [manualDate, setManualDate] = useState(asset?.manualPriceDate ?? new Date().toISOString().slice(0, 10))
+  const [manualPrice, setManualPrice] = useState('')
+  const [manualDate, setManualDate] = useState(new Date().toISOString().slice(0, 10))
+  const [manualCurrency, setManualCurrency] = useState<string | null>(null)
   const [watched, setWatched] = useState(asset?.watched ?? defaultWatched)
   const [tried, setTried] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -51,8 +55,6 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
           isin: isin.trim().toUpperCase() || undefined,
           market: market.trim() || undefined,
           note: note.trim() || undefined,
-          manualPrice: priceParsed || undefined,
-          manualPriceDate: priceParsed ? manualDate : undefined,
           watched: watched || undefined,
         },
         asset?.id,
@@ -61,6 +63,18 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
       setSaving(false)
       toast(`No se pudo guardar el activo: ${e instanceof Error ? e.message : 'error desconocido'}. Inténtalo de nuevo.`)
       return
+    }
+    // El precio inicial entra en el histórico de precios del activo (solo al crearlo).
+    if (!asset && priceParsed) {
+      try {
+        const priceCurrency = manualCurrency ?? currency.trim().toUpperCase()
+        const fxRate = await rateForPoint(priceCurrency, manualDate)
+        await addPricePoint(id, { date: manualDate, price: priceParsed, currency: priceCurrency, fxRate })
+      } catch {
+        toast('Activo añadido, pero no se pudo guardar el precio. Añádelo desde su ficha.')
+        onClose(id)
+        return
+      }
     }
     toast(asset ? 'Activo guardado' : 'Activo añadido')
     onClose(id)
@@ -156,27 +170,48 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
       <Field label="Mercado">
         <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="BME, Xetra, NASDAQ…" />
       </Field>
-      <div className="grid-2">
-        <Field
-          label="Precio manual"
-          hint={
-            tried && !priceOk
-              ? 'Escribe un precio mayor que cero, p. ej. 12,34'
-              : `En ${currency || 'la divisa del activo'}. Para fondos, bonos o valores sin cotización.`
-          }
-        >
-          <input
-            value={manualPrice}
-            onChange={(e) => setManualPrice(e.target.value)}
-            inputMode="decimal"
-            placeholder="12,34"
-            aria-invalid={tried && !priceOk}
-          />
-        </Field>
-        <Field label="Fecha del precio">
-          <input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} />
-        </Field>
-      </div>
+      {asset ? (
+        onOpenPrices && (
+          <button type="button" className="btn" onClick={onOpenPrices} disabled={saving}>
+            Ver y añadir precios
+          </button>
+        )
+      ) : (
+        <>
+          <div className="grid-2">
+            <Field
+              label="Precio actual (opcional)"
+              hint={
+                tried && !priceOk
+                  ? 'Escribe un precio mayor que cero, p. ej. 12,34'
+                  : 'Para fondos, bonos o valores sin cotización. Luego podrás ir añadiendo más.'
+              }
+            >
+              <input
+                value={manualPrice}
+                onChange={(e) => setManualPrice(e.target.value)}
+                inputMode="decimal"
+                placeholder="12,34"
+                aria-invalid={tried && !priceOk}
+              />
+            </Field>
+            <Field label="Divisa del precio" hint="La que ves en tu fuente">
+              <select value={manualCurrency ?? (currency || 'EUR')} onChange={(e) => setManualCurrency(e.target.value)}>
+                {[...new Set([currency || 'EUR', 'EUR', 'USD'])].map((c) => (
+                  <option key={c} value={c}>
+                    {c === 'EUR' ? 'Euros (€)' : c === 'USD' ? 'Dólares ($)' : c}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {manualPrice.trim() !== '' && (
+            <Field label="Fecha del precio">
+              <input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} />
+            </Field>
+          )}
+        </>
+      )}
       <label className="check">
         <input type="checkbox" checked={watched} onChange={(e) => setWatched(e.target.checked)} />
         Seguir en la pantalla de Seguimiento

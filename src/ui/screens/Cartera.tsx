@@ -21,12 +21,11 @@ export const TYPE_COLORS: Record<AssetType, string> = {
 
 interface Props {
   portfolio: Portfolio
-  hasAssets: boolean
   onAdd: () => void
   onOpenAsset: (assetId: string) => void
 }
 
-export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
+export function Cartera({ portfolio, onAdd, onOpenAsset }: Props) {
   const { positions, totalCostEur, issues } = portfolio
   const years = useMemo(() => summarizeByYear(portfolio), [portfolio])
   const [view, setView] = useState<'activa' | 'historico'>('activa')
@@ -49,9 +48,9 @@ export function Cartera({ portfolio, hasAssets, onAdd, onOpenAsset }: Props) {
         </div>
         <div className="empty">
           <p>Tu cartera sale de tus movimientos.</p>
-          <p>Añade tu primera compra y aquí verás lo que tienes ahora y, cuando vendas, tu histórico con las plusvalías por año.</p>
+          <p>Registra tu primera compra en la pestaña Movimientos y aquí verás lo que tienes ahora y, cuando vendas, tu histórico con las plusvalías por año.</p>
           <button className="btn primary" onClick={onAdd}>
-            {hasAssets ? 'Añadir movimiento' : 'Añadir primera compra'}
+            Ir a Movimientos
           </button>
         </div>
       </>

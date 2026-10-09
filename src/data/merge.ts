@@ -22,6 +22,7 @@ export function mergeSnapshots(local: Snapshot, remote: Snapshot): Snapshot {
     exportedAt: new Date().toISOString(),
     assets: mergeRecords(local.assets, remote.assets),
     movements: mergeRecords(local.movements, remote.movements),
+    prices: mergeRecords(local.prices ?? [], remote.prices ?? []),
   }
 }
 
@@ -41,7 +42,8 @@ export function parseSnapshot(text: string): Snapshot {
     throw new Error(`Copia de una versión de Buho no compatible (${String(s.version)}). Actualiza la app.`)
   }
   const valid = (r: Partial<SyncedRecord>) => typeof r?.id === 'string' && typeof r?.updatedAt === 'string'
-  if (!s.assets.every(valid) || !s.movements.every(valid)) {
+  if (s.prices !== undefined && !Array.isArray(s.prices)) throw new Error('La copia tiene registros dañados.')
+  if (!s.assets.every(valid) || !s.movements.every(valid) || !(s.prices ?? []).every(valid)) {
     throw new Error('La copia tiene registros dañados.')
   }
   return s as Snapshot

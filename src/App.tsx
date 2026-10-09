@@ -4,6 +4,7 @@ import type { Asset, Movement } from './domain/types'
 import { useSync } from './sync/SyncContext'
 import { AssetForm } from './ui/AssetForm'
 import { FollowSheet } from './ui/FollowSheet'
+import { PriceDetail } from './ui/PriceDetail'
 import { usePortfolio } from './ui/hooks'
 import { IconActivos, IconAjustes, IconCartera, IconMovimientos, IconSeguimiento } from './ui/icons'
 import { MovementForm } from './ui/MovementForm'
@@ -31,6 +32,7 @@ type Editing =
   | { kind: 'movement'; movement?: Movement; assetId?: string }
   | { kind: 'asset'; asset?: Asset; watched?: boolean }
   | { kind: 'follow' }
+  | { kind: 'prices'; asset: Asset }
   | null
 
 export function App() {
@@ -75,8 +77,7 @@ export function App() {
         {route === 'cartera' && (
           <Cartera
             portfolio={portfolio}
-            hasAssets={assets.length > 0}
-            onAdd={addMovement}
+            onAdd={() => go('movimientos')}
             onOpenAsset={(id) => {
               setAssetFilter(id)
               go('movimientos')
@@ -96,7 +97,7 @@ export function App() {
         {route === 'seguimiento' && (
           <Seguimiento
             assets={assets}
-            onOpen={(a) => setEditing({ kind: 'asset', asset: a })}
+            onOpen={(a) => setEditing({ kind: 'prices', asset: a })}
             onAdd={() => setEditing({ kind: 'follow' })}
           />
         )}
@@ -111,7 +112,7 @@ export function App() {
         {route === 'ajustes' && <Ajustes />}
       </main>
 
-      {route !== 'ajustes' && (
+      {route === 'movimientos' && (
         <button className="btn primary fab" onClick={addMovement}>
           Añadir movimiento
         </button>
@@ -126,6 +127,13 @@ export function App() {
           onClose={() => setEditing(null)}
         />
       )}
+      {editing?.kind === 'prices' && (
+        <PriceDetail
+          asset={assets.find((a) => a.id === editing.asset.id) ?? editing.asset}
+          onClose={() => setEditing(null)}
+          onEdit={() => setEditing({ kind: 'asset', asset: editing.asset })}
+        />
+      )}
       {editing?.kind === 'follow' && (
         <FollowSheet
           assets={assets}
@@ -137,6 +145,7 @@ export function App() {
         <AssetForm
           asset={editing.asset}
           defaultWatched={editing.watched}
+          onOpenPrices={editing.asset ? () => setEditing({ kind: 'prices', asset: editing.asset! }) : undefined}
           movementCount={editing.asset ? movements.filter((m) => m.assetId === editing.asset!.id).length : 0}
           onClose={() => setEditing(null)}
         />

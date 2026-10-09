@@ -8,10 +8,12 @@ interface Props {
   onSubmit: () => void
   /** Guardando: no se puede cerrar ni editar hasta que termine. */
   busy?: boolean
+  /** Color de acento de la hoja (compra, venta…): se aplica con CSS. */
+  tone?: string
 }
 
 /** Hoja modal: sube desde abajo en el móvil, centrada en pantallas grandes. */
-export function Sheet({ title, onClose, children, footer, onSubmit, busy = false }: Props) {
+export function Sheet({ title, onClose, children, footer, onSubmit, busy = false, tone }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
   const [slow, setSlow] = useState(false)
 
@@ -33,6 +35,7 @@ export function Sheet({ title, onClose, children, footer, onSubmit, busy = false
     <dialog
       ref={ref}
       className="sheet"
+      data-tone={tone}
       aria-label={title}
       onCancel={(e) => {
         e.preventDefault()

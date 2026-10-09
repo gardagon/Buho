@@ -73,7 +73,8 @@ public/              logo.png (fuente de los iconos; se regeneran con `npx pwa-a
 Ver `src/domain/types.ts`. Puntos clave:
 
 - Todos los registros heredan de `SyncedRecord`: `id` (UUID), `createdAt`, `updatedAt`, `deleted?`.
-- `Asset`: nombre, tipo, divisa de cotización, ticker, ISIN, mercado.
+- `Asset`: nombre, tipo, divisa de cotización, ticker, ISIN, mercado. `manualPrice`, `manualPriceDate` y `manualPriceCurrency` guardan el último precio manual (puede estar en otra divisa que la del activo).
+- `PricePoint` (`Snapshot.prices`, opcional): cada precio manual con su fecha, divisa y el cambio del BCE de ese día. Forman el histórico y se sincronizan con Drive; el último deja `Asset.manualPrice` al día (`addPricePoint`, `deletePricePoint`). Las cotizaciones de mercado guardan además su cierre diario en `quoteDays` (solo local) para dibujar el gráfico.
 - `Movement`: `compra` y `venta` usan `quantity` y `price` (en la divisa elegida: dólares o euros) y, opcionalmente, `totalEur` con el importe real cobrado o ingresado; `dividendo` y `cupon` usan `amount` (bruto) y `withholding`. Todos llevan `currency`, `fxRate`, `fees`, y opcionalmente `account` y `note`.
 - `fxRate` = unidades de la divisa por 1 EUR en la fecha del movimiento (convención del BCE). Importe en EUR = importe / fxRate.
 - `Snapshot` (versión 1) es el formato del archivo de Drive y de las copias descargadas.
@@ -82,6 +83,13 @@ Ver `src/domain/types.ts`. Puntos clave:
 
 - **Seguimiento** es la pantalla de inicio: solo los valores que la persona ha elegido seguir (`Asset.watched`), tengan o no movimientos.
 - **Cartera** sale solo de los movimientos. Vista *Activa*: posiciones abiertas con su valor de mercado. Vista *Histórico*: resultados por año, ventas y dividendos o cupones.
+
+## Pantallas y precios
+
+- **Seguimiento → ficha del valor** (`ui/PriceDetail.tsx`): precio actual en dos monedas (en la que se ve y su equivalente en euros o dólares con el cambio actual del BCE, `counterPrice`), gráfico en euros (`ui/PriceChart.tsx`, serie `priceHistory`) y lista de los precios puestos a mano, con alta y borrado.
+- El botón «Añadir movimiento» solo existe en la pestaña Movimientos.
+- Cada tipo de movimiento tiene su color (`data-tone` en la hoja): compra en verde, venta en rojo, dividendo en azul y cupón en morado.
+- En los movimientos, el tipo de cambio sale por defecto del BCE del día de la operación (`fetchRateOn`); se puede escribir el del bróker.
 
 ## Compras y ventas
 

@@ -46,7 +46,8 @@ export async function refreshQuotes(fetcher?: Fetcher): Promise<RefreshReport> {
   // Divisas de lo que se sigue y de lo que puede traer una cotización.
   try {
     const fx: FxRates = await fetchFxRates(
-      tracked.map((a) => a.currency),
+      // USD siempre, para poder ver cualquier precio en euros y en dólares.
+      [...tracked.map((a) => a.currency), ...tracked.map((a) => a.manualPriceCurrency ?? a.currency), 'USD'],
       fetcher,
     )
     if (Object.keys(fx.rates).length > 0) await saveFxRates(fx)

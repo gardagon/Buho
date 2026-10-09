@@ -1,6 +1,6 @@
 import { formatMoney, formatPercent } from '../../domain/numbers'
 import { ASSET_TYPES, type Asset } from '../../domain/types'
-import { dayChange, pickPrice } from '../../domain/valuation'
+import { counterPrice, dayChange, pickPrice } from '../../domain/valuation'
 import { useQuotes } from '../../quotes/QuotesContext'
 import { priceNote, RefreshLine } from '../prices'
 
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function Seguimiento({ assets, onOpen, onAdd }: Props) {
-  const { quotes, hasKey } = useQuotes()
+  const { quotes, fx, hasKey } = useQuotes()
   const watched = assets.filter((a) => a.watched)
 
   return (
@@ -43,12 +43,14 @@ export function Seguimiento({ assets, onOpen, onAdd }: Props) {
             {watched.map((a) => {
               const price = pickPrice(a, quotes.get(a.id))
               const change = price && dayChange(price)
+              const other = price && counterPrice(price, fx)
               return (
                 <li key={a.id}>
                   <button className="row" onClick={() => onOpen(a)}>
                     <span className="row-title">{a.name}</span>
                     <span className="row-end num">
                       <strong>{price ? formatMoney(price.price, price.currency) : '—'}</strong>
+                      {other && <span className="muted"> ≈ {formatMoney(other.amount, other.currency)}</span>}
                     </span>
                     <span className="row-sub">
                       {a.ticker ?? ASSET_TYPES[a.type]}

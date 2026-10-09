@@ -48,8 +48,31 @@ export interface Asset extends SyncedRecord {
    */
   manualPrice?: DecimalString
   manualPriceDate?: ISODate
+  /** Divisa del precio manual (por defecto, la del activo): p. ej. un precio en $ de Investing. */
+  manualPriceCurrency?: string
   /** Aparece en la pantalla de Seguimiento aunque no se tenga en cartera. */
   watched?: boolean
+}
+
+/**
+ * Precio puesto a mano en una fecha. Forman el histórico de precios del activo
+ * y viajan a Drive con el resto de datos. `Asset.manualPrice` guarda el más reciente.
+ */
+export interface PricePoint extends SyncedRecord {
+  assetId: string
+  date: ISODate
+  price: DecimalString
+  currency: string
+  /** Unidades de `currency` por 1 EUR ese día (BCE), si se pudo obtener. */
+  fxRate?: DecimalString
+}
+
+/** Cotización de cierre de un día, guardada para dibujar el histórico. Solo local. */
+export interface QuoteDay {
+  assetId: string
+  date: ISODate
+  price: DecimalString
+  currency: string
 }
 
 /**
@@ -124,4 +147,6 @@ export interface Snapshot {
   exportedAt: ISODateTime
   assets: Asset[]
   movements: Movement[]
+  /** Histórico de precios manuales. Opcional: las copias anteriores no lo tienen. */
+  prices?: PricePoint[]
 }

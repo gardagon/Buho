@@ -42,6 +42,8 @@
 ### Modelo de datos según el uso real del usuario
 - [x] Compras y ventas con el precio en $ o €, y comisiones y total en EUR; lo que falta se calcula
 - [x] Precio medio real por título con comisiones incluidas
+- [x] Histórico de precios manuales por valor, con gráfico, y precio en dólares o euros con su equivalente
+- [x] Cambio del BCE del día de cada movimiento (Frankfurter)
 - [ ] Alinear el resto del modelo con la hoja de cálculo del usuario (campos, cuentas, divisas)
 
 ### Fase 5: fiscalidad completa
@@ -61,5 +63,4 @@ Ver `docs/FISCALIDAD.md`, sección «Pendiente».
 
 ## Ideas de mejora detectadas
 
-- El estado vacío de Cartera muestra a la vez el botón central y el flotante; quizá ocultar el flotante cuando no hay datos.
 - Al abrir la app conectada a Drive, la píldora pide un toque para reconectar: valorar un aviso más visible si hace días que no se sincroniza.

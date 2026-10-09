@@ -4,7 +4,7 @@ import { db, getMeta, setMeta } from '../data/db'
 import { QUOTE_META, loadFxRates, saveAsset, saveMovement, wipeLocalData } from '../data/repo'
 import type { Asset } from '../domain/types'
 import { createFinnhubProvider, guessCurrency, titleCase } from './finnhub'
-import { fetchFxRates } from './fx'
+import { fetchFxRates, fetchRateOn } from './fx'
 import { followSecurity, refreshQuotes, searchSecurities } from './service'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
@@ -182,5 +182,22 @@ describe('búsqueda de valores', () => {
     expect(id).toBe(existing)
     expect(await db.assets.count()).toBe(1)
     expect(await db.assets.get(id)).toMatchObject({ name: 'Mi Apple', watched: true })
+  })
+})
+
+describe('cambio de un día (Frankfurter)', () => {
+  it('pide el cambio de la fecha y devuelve la fecha real publicada', async () => {
+    let url = ''
+    const r = await fetchRateOn('USD', '2026-10-10', async (u) => {
+      url = String(u)
+      // un sábado: el BCE da el viernes
+      return json({ date: '2026-10-09', rates: { USD: 1.1651 } })
+    })
+    expect(url).toContain('/2026-10-10?base=EUR&symbols=USD')
+    expect(r).toEqual({ rate: '1.1651', date: '2026-10-09' })
+  })
+
+  it('falla con un mensaje claro si no hay cambio', async () => {
+    await expect(fetchRateOn('XXX', '2026-10-09', async () => json({ date: '2026-10-09', rates: {} }))).rejects.toThrow(/no tiene cambio/)
   })
 })

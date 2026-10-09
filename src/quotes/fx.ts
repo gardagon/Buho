@@ -18,3 +18,31 @@ export async function fetchFxRates(currencies: string[], fetcher: Fetcher = (...
   for (const [c, v] of Object.entries(data.rates)) rates[c] = String(v)
   return { date: data.date, rates }
 }
+
+/**
+ * Cambio del BCE de un día: unidades de `currency` por 1 EUR. Si ese día no hubo
+ * publicación (fin de semana, festivo), Frankfurter da el último anterior y
+ * `date` dice cuál es.
+ */
+export async function fetchRateOn(
+  currency: string,
+  date: string,
+  fetcher: Fetcher = (...a) => fetch(...a),
+): Promise<{ rate: string; date: string }> {
+  const res = await fetcher(`${BASE}/${date}?base=EUR&symbols=${currency}`)
+  if (!res.ok) throw new Error(`No se pudo pedir el cambio del ${date} (error ${res.status}).`)
+  const data = (await res.json()) as { date?: string; rates?: Record<string, number> }
+  const rate = data.rates?.[currency]
+  if (!rate || !data.date) throw new Error(`El BCE no tiene cambio de ${currency} para esa fecha.`)
+  return { rate: String(rate), date: data.date }
+}
+
+/** Cambio del BCE de un día para guardarlo con un precio; `undefined` si no hay conexión o es EUR. */
+export async function rateForPoint(currency: string, date: string): Promise<string | undefined> {
+  if (currency === 'EUR') return undefined
+  try {
+    return (await fetchRateOn(currency, date)).rate
+  } catch {
+    return undefined
+  }
+}

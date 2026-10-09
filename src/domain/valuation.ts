@@ -1,6 +1,6 @@
 import { Decimal, d } from './numbers'
 import type { Position } from './portfolio'
-import type { Asset, FxRates, Quote } from './types'
+import type { Asset, FxRates, PricePoint, Quote, QuoteDay } from './types'
 
 /**
  * Valoración a precio de mercado. Se apoya en las posiciones a coste de
@@ -25,7 +25,7 @@ export function pickPrice(asset: Asset, quote?: Quote): PriceInfo | undefined {
     asset.manualPrice && d(asset.manualPrice).gt(0)
       ? ({
           price: d(asset.manualPrice),
-          currency: asset.currency,
+          currency: asset.manualPriceCurrency ?? asset.currency,
           at: asset.manualPriceDate ?? '',
           source: 'manual',
         } satisfies PriceInfo)
@@ -126,4 +126,45 @@ export function dayChange(price: PriceInfo): { abs: Decimal; pct: Decimal } | un
   if (!price.prevClose || price.prevClose.lte(0)) return undefined
   const abs = price.price.minus(price.prevClose)
   return { abs, pct: abs.div(price.prevClose) }
+}
+
+/**
+ * El mismo precio en la otra moneda, para compararlo: si está en euros, lo da en
+ * dólares; si está en otra divisa, lo da en euros. `undefined` si falta el cambio.
+ */
+export function counterPrice(price: PriceInfo, fx?: FxRates): { amount: Decimal; currency: string } | undefined {
+  if (price.currency === 'EUR') {
+    const usd = fx?.rates.USD
+    return usd && d(usd).gt(0) ? { amount: price.price.mul(d(usd)), currency: 'USD' } : undefined
+  }
+  const eur = priceToEur(price.price, price.currency, fx)
+  return eur ? { amount: eur, currency: 'EUR' } : undefined
+}
+
+export interface HistoryPoint {
+  date: string
+  /** Precio en EUR. */
+  eur: Decimal
+  source: 'manual' | 'mercado'
+}
+
+/**
+ * Serie del histórico en EUR, ordenada por fecha. Cada punto se pasa a euros con
+ * el cambio de su día si se guardó, y si no con el cambio actual. Los puntos de
+ * una divisa sin cambio disponible se dejan fuera. Si un día tiene precio manual
+ * y cotización, gana el manual (es lo que la persona puso a propósito).
+ */
+export function priceHistory(manual: PricePoint[], market: QuoteDay[], fx?: FxRates): HistoryPoint[] {
+  const byDate = new Map<string, HistoryPoint>()
+  const add = (date: string, price: string, currency: string, rate: string | undefined, source: HistoryPoint['source']) => {
+    const base = d(price)
+    let eur: Decimal | undefined
+    if (currency === 'EUR') eur = base
+    else if (rate && d(rate).gt(0)) eur = base.div(d(rate))
+    else eur = priceToEur(base, currency, fx)
+    if (eur) byDate.set(date, { date, eur, source })
+  }
+  for (const m of market) add(m.date, m.price, m.currency, undefined, 'mercado')
+  for (const p of manual) if (!p.deleted) add(p.date, p.price, p.currency, p.fxRate, 'manual')
+  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1))
 }

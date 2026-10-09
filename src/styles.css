@@ -496,3 +496,65 @@ dialog.sheet[open] { animation: rise 0.22s ease-out; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 .sheet-body[inert] { opacity: 0.6; }
 .busy-note { margin: 0; padding: 8px 16px 0; }
+
+/* ---------- Gráfico de precios ---------- */
+
+.price-chart { margin: 0; }
+.price-chart-box { position: relative; }
+.price-chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+.chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-axis { fill: var(--ink-3); font-size: 10px; }
+.chart-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area { fill: var(--ink); opacity: 0.08; }
+.chart-cross { stroke: var(--ink-3); stroke-width: 1; }
+.chart-ring { fill: var(--surface); }
+.chart-dot { fill: var(--ink); }
+.chart-tip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+  font-size: var(--step--1);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.detail-price { margin: 0; font-size: var(--step-2); line-height: 1.2; }
+.detail-price .muted { font-size: var(--step-0); font-weight: 450; }
+
+/* ---------- Tipo de movimiento: cada uno con su color ---------- */
+
+:root {
+  --tone-compra: var(--gain);
+  --tone-venta: var(--loss);
+  --tone-dividendo: #2f6aa8;
+  --tone-cupon: #6a4a9c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { --tone-dividendo: #6aa1de; --tone-cupon: #a98bd6; }
+}
+:root[data-theme='dark'] { --tone-dividendo: #6aa1de; --tone-cupon: #a98bd6; }
+
+dialog.sheet[data-tone='compra'] { --tone: var(--tone-compra); }
+dialog.sheet[data-tone='venta'] { --tone: var(--tone-venta); }
+dialog.sheet[data-tone='dividendo'] { --tone: var(--tone-dividendo); }
+dialog.sheet[data-tone='cupon'] { --tone: var(--tone-cupon); }
+dialog.sheet[data-tone] .sheet-head {
+  border-top: 5px solid var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, var(--surface));
+}
+dialog.sheet[data-tone] .total-line { border-left: 4px solid var(--tone); }
+.segmented label[data-tone='compra'] { --tone: var(--tone-compra); }
+.segmented label[data-tone='venta'] { --tone: var(--tone-venta); }
+.segmented label[data-tone='dividendo'] { --tone: var(--tone-dividendo); }
+.segmented label[data-tone='cupon'] { --tone: var(--tone-cupon); }
+.segmented label[data-tone] input:checked + span {
+  background: color-mix(in srgb, var(--tone) 18%, var(--surface));
+  box-shadow: inset 0 -3px 0 var(--tone);
+}
