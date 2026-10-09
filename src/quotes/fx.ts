@@ -46,3 +46,20 @@ export async function rateForPoint(currency: string, date: string): Promise<stri
     return undefined
   }
 }
+
+/**
+ * Divisas que la app necesita convertir (las de los activos y las de sus precios
+ * manuales, más USD para ver cada precio en dólares) y que aún no tienen cambio.
+ */
+export function missingRates(
+  assets: { currency: string; manualPriceCurrency?: string }[],
+  fx?: { rates: Record<string, string> },
+): string[] {
+  const needed = new Set<string>(['USD'])
+  for (const a of assets) {
+    needed.add(a.currency)
+    if (a.manualPriceCurrency) needed.add(a.manualPriceCurrency)
+  }
+  needed.delete('EUR')
+  return [...needed].filter((c) => !fx?.rates[c]).sort()
+}

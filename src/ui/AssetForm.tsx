@@ -7,7 +7,20 @@ import { Field, Sheet } from './Sheet'
 import { Spinner } from './Spinner'
 import { useToast } from './Toast'
 
-export const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CAD', 'SEK', 'NOK', 'DKK', 'AUD', 'HKD']
+export const CURRENCIES: Record<string, string> = {
+  EUR: 'Euro',
+  USD: 'Dólar estadounidense',
+  GBP: 'Libra esterlina',
+  CHF: 'Franco suizo',
+  JPY: 'Yen japonés',
+  CAD: 'Dólar canadiense',
+  AUD: 'Dólar australiano',
+  HKD: 'Dólar de Hong Kong',
+  SEK: 'Corona sueca',
+  NOK: 'Corona noruega',
+  DKK: 'Corona danesa',
+}
+const OTHER = '__otra'
 
 interface Props {
   asset?: Asset
@@ -33,6 +46,8 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
   const [manualCurrency, setManualCurrency] = useState<string | null>(null)
   const [watched, setWatched] = useState(asset?.watched ?? defaultWatched)
   const [tried, setTried] = useState(false)
+  // Si la divisa del activo no está en la lista, se enseña el campo para escribirla.
+  const [otherCurrency, setOtherCurrency] = useState(!!asset && !(asset.currency in CURRENCIES))
   const [saving, setSaving] = useState(false)
 
   const isinOk = isin.trim() === '' || /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin.trim().toUpperCase())
@@ -136,22 +151,43 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
             ))}
           </select>
         </Field>
-        <Field label="Divisa de cotización">
+        <Field label="Mercado">
+          <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="BME, Xetra, NASDAQ…" />
+        </Field>
+      </div>
+      <Field label="Divisa de cotización" hint="La moneda en la que cotiza en su mercado">
+        <select
+          value={otherCurrency ? OTHER : currency}
+          onChange={(e) => {
+            if (e.target.value === OTHER) {
+              setOtherCurrency(true)
+              setCurrency('')
+            } else {
+              setOtherCurrency(false)
+              setCurrency(e.target.value)
+            }
+          }}
+        >
+          {Object.entries(CURRENCIES).map(([code, name]) => (
+            <option key={code} value={code}>
+              {code} · {name}
+            </option>
+          ))}
+          <option value={OTHER}>Otra…</option>
+        </select>
+      </Field>
+      {otherCurrency && (
+        <Field label="Código de la divisa" hint="Tres letras, p. ej. PLN o MXN">
           <input
-            list="currencies"
             value={currency}
             onChange={(e) => setCurrency(e.target.value.toUpperCase())}
             maxLength={3}
             autoCapitalize="characters"
+            placeholder="PLN"
             aria-invalid={tried && !/^[A-Z]{3}$/.test(currency)}
           />
-          <datalist id="currencies">
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
         </Field>
-      </div>
+      )}
       <div className="grid-2">
         <Field label="Ticker" hint="Para las cotizaciones">
           <input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="IBE.MC" autoCapitalize="characters" />
@@ -167,9 +203,6 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
           />
         </Field>
       </div>
-      <Field label="Mercado">
-        <input value={market} onChange={(e) => setMarket(e.target.value)} placeholder="BME, Xetra, NASDAQ…" />
-      </Field>
       {asset ? (
         onOpenPrices && (
           <button type="button" className="btn" onClick={onOpenPrices} disabled={saving}>

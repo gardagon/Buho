@@ -88,6 +88,8 @@ Ver `src/domain/types.ts`. Puntos clave:
 
 - **Seguimiento → ficha del valor** (`ui/PriceDetail.tsx`): precio actual en dos monedas (en la que se ve y su equivalente en euros o dólares con el cambio actual del BCE, `counterPrice`), gráfico en euros (`ui/PriceChart.tsx`, serie `priceHistory`) y lista de los precios puestos a mano, con alta y borrado.
 - El botón «Añadir movimiento» solo existe en la pestaña Movimientos.
+- La divisa de cotización de un activo se elige en una lista (EUR, USD, GBP…, u «Otra…» para escribir el código). Es la moneda real en la que cotiza; la moneda en la que se ve un precio puesto a mano es independiente.
+- Si hay activos o precios en una divisa sin cambio guardado, `QuotesProvider` pide los cambios al BCE sin esperar (`missingRates`); así un precio en dólares siempre se puede valorar en euros.
 - Cada tipo de movimiento tiene su color (`data-tone` en la hoja): compra en verde, venta en rojo, dividendo en azul y cupón en morado.
 - En los movimientos, el tipo de cambio sale por defecto del BCE del día de la operación (`fetchRateOn`); se puede escribir el del bróker.
 

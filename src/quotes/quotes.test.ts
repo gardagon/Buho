@@ -4,7 +4,7 @@ import { db, getMeta, setMeta } from '../data/db'
 import { QUOTE_META, loadFxRates, saveAsset, saveMovement, wipeLocalData } from '../data/repo'
 import type { Asset } from '../domain/types'
 import { createFinnhubProvider, guessCurrency, titleCase } from './finnhub'
-import { fetchFxRates, fetchRateOn } from './fx'
+import { fetchFxRates, fetchRateOn, missingRates } from './fx'
 import { followSecurity, refreshQuotes, searchSecurities } from './service'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
@@ -199,5 +199,25 @@ describe('cambio de un día (Frankfurter)', () => {
 
   it('falla con un mensaje claro si no hay cambio', async () => {
     await expect(fetchRateOn('XXX', '2026-10-09', async () => json({ date: '2026-10-09', rates: {} }))).rejects.toThrow(/no tiene cambio/)
+  })
+})
+
+describe('missingRates', () => {
+  it('pide USD siempre y las divisas de los activos y de sus precios manuales', () => {
+    // Activo en EUR con un precio manual en dólares y otro en libras: faltan USD y GBP
+    const assets = [
+      { currency: 'EUR', manualPriceCurrency: 'USD' },
+      { currency: 'GBP' },
+      { currency: 'EUR' },
+    ]
+    expect(missingRates(assets, undefined)).toEqual(['GBP', 'USD'])
+  })
+
+  it('no pide las que ya tienen cambio ni el EUR', () => {
+    expect(missingRates([{ currency: 'GBP' }], { rates: { USD: '1.17', GBP: '0.86' } })).toEqual([])
+  })
+
+  it('si no hay activos, solo falta USD', () => {
+    expect(missingRates([], { rates: {} })).toEqual(['USD'])
   })
 })

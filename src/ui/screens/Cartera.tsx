@@ -165,7 +165,7 @@ export function Cartera({ portfolio, onAdd, onOpenAsset }: Props) {
                     ) : (
                       <span className="row-sub row-end">
                         {v?.missingFx
-                          ? `Falta el cambio ${p.asset.currency}/EUR`
+                          ? `Falta el cambio ${v.price?.currency ?? p.asset.currency}/EUR · actualiza`
                           : v?.price
                             ? priceNote(v.price)
                             : 'Sin precio · coste ' + formatMoney(p.costEur)}

@@ -4,6 +4,7 @@ import { db, getMeta } from '../data/db'
 import { QUOTE_META } from '../data/repo'
 import type { FxRates, Quote } from '../domain/types'
 import { useToast } from '../ui/Toast'
+import { missingRates } from './fx'
 import { refreshQuotes, type RefreshReport } from './service'
 
 interface QuotesState {
@@ -38,7 +39,10 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
   const running = useRef(false)
 
   const list = useLiveQuery(() => db.quotes.toArray())
-  const fx = useLiveQuery(() => db.meta.get(QUOTE_META.fx).then((e) => e?.value as FxRates | undefined))
+  // El envoltorio distingue «aún cargando» (undefined) de «no hay cambios guardados».
+  const fxEntry = useLiveQuery(() => db.meta.get(QUOTE_META.fx).then((e) => ({ fx: e?.value as FxRates | undefined })))
+  const fx = fxEntry?.fx
+  const assetList = useLiveQuery(() => db.assets.toArray())
   const refreshedAt = useLiveQuery(() => db.meta.get(QUOTE_META.refreshedAt).then((e) => e?.value as string | undefined))
   const hasKey = useLiveQuery(() => db.meta.get(QUOTE_META.finnhubKey).then((e) => !!e?.value)) ?? false
 
@@ -73,6 +77,17 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
       if (navigator.onLine) await refresh({ silent: true })
     })()
   }, [refresh])
+
+  // Si algún activo o precio está en una divisa sin cambio guardado (p. ej. un precio en
+  // dólares añadido antes de pedir USD), se piden los cambios sin esperar a la siguiente vez.
+  const attempted = useRef('')
+  useEffect(() => {
+    if (!fxEntry || !assetList) return
+    const missing = missingRates(assetList.filter((a) => !a.deleted), fx).join(',')
+    if (!missing || attempted.current === missing || !navigator.onLine) return
+    attempted.current = missing
+    void refresh({ silent: true })
+  }, [fxEntry, fx, assetList, refresh])
 
   const value = useMemo(
     () => ({ quotes, fx, refreshing, refreshedAt, hasKey, lastReport, refresh }),
