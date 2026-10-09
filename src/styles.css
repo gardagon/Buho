@@ -390,7 +390,7 @@ dialog.sheet[open] { animation: rise 0.22s ease-out; }
 }
 .sheet-foot .spacer { flex: 1; }
 
-.field { display: grid; gap: 4px; }
+.field { display: grid; gap: 4px; align-content: start; }
 .field > span { font-size: var(--step--1); font-weight: 600; color: var(--ink-2); }
 .field small { color: var(--ink-3); font-size: 0.75rem; }
 .field input, .field select, .field textarea {
