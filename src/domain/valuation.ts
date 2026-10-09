@@ -168,3 +168,32 @@ export function priceHistory(manual: PricePoint[], market: QuoteDay[], fx?: FxRa
   for (const p of manual) if (!p.deleted) add(p.date, p.price, p.currency, p.fxRate, 'manual')
   return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1))
 }
+
+/** Cambia un importe de una divisa a otra pasando por el euro. `undefined` si falta algún cambio. */
+export function convertAmount(amount: Decimal, from: string, to: string, fx?: FxRates): Decimal | undefined {
+  if (from === to) return amount
+  const eur = priceToEur(amount, from, fx)
+  if (!eur) return undefined
+  if (to === 'EUR') return eur
+  const rate = fx?.rates[to]
+  return rate && d(rate).gt(0) ? eur.mul(d(rate)) : undefined
+}
+
+export type BaseCurrency = 'EUR' | 'USD'
+
+/**
+ * Cómo se enseña un precio: en la moneda principal elegida y, más pequeño, su
+ * equivalente en la otra (euros ↔ dólares). Si no se puede convertir, se enseña
+ * tal cual viene.
+ */
+export function displayPrice(
+  price: PriceInfo,
+  base: BaseCurrency,
+  fx?: FxRates,
+): { main: { amount: Decimal; currency: string }; other?: { amount: Decimal; currency: string } } {
+  const mainAmount = convertAmount(price.price, price.currency, base, fx)
+  const main = mainAmount ? { amount: mainAmount, currency: base } : { amount: price.price, currency: price.currency }
+  const otherCurrency = base === 'EUR' ? 'USD' : 'EUR'
+  const otherAmount = convertAmount(price.price, price.currency, otherCurrency, fx)
+  return { main, other: otherAmount && main.currency === base ? { amount: otherAmount, currency: otherCurrency } : undefined }
+}

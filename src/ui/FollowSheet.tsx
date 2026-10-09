@@ -23,7 +23,8 @@ type State =
 
 export function FollowSheet({ assets, onClose, onManual }: Props) {
   const toast = useToast()
-  const { hasKey, quotes } = useQuotes()
+  const { hasKey, hasYahoo, quotes } = useQuotes()
+  const canSearch = hasKey || hasYahoo
   const [query, setQuery] = useState('')
   const [state, setState] = useState<State>({ status: 'idle' })
   const lastRequest = useRef(0)
@@ -52,14 +53,14 @@ export function FollowSheet({ assets, onClose, onManual }: Props) {
 
   // Busca sola cuando se deja de escribir.
   useEffect(() => {
-    if (!hasKey || q.length < 2) {
+    if (!canSearch || q.length < 2) {
       lastRequest.current++
       setState({ status: 'idle' })
       return
     }
     const t = setTimeout(() => void search(q), 450)
     return () => clearTimeout(t)
-  }, [q, hasKey])
+  }, [q, canSearch])
 
   async function followExisting(a: Asset) {
     const { id: _i, createdAt: _c, updatedAt: _u, deleted: _d, ...rest } = a
@@ -78,7 +79,7 @@ export function FollowSheet({ assets, onClose, onManual }: Props) {
     <Sheet
       title="Seguir un valor"
       onClose={onClose}
-      onSubmit={() => q.length >= 2 && hasKey && void search(q)}
+      onSubmit={() => q.length >= 2 && canSearch && void search(q)}
       footer={
         <>
           <button type="button" className="btn ghost" onClick={onManual}>
@@ -104,9 +105,9 @@ export function FollowSheet({ assets, onClose, onManual }: Props) {
         />
       </label>
 
-      {!hasKey && (
+      {!canSearch && (
         <p className="small muted">
-          Para buscar valores hace falta tu clave gratuita de Finnhub.{' '}
+          Para buscar valores hace falta tu clave gratuita de Finnhub o el proxy de Yahoo.{' '}
           <a href="#/ajustes" onClick={onClose}>
             Añádela en Ajustes
           </a>
@@ -152,7 +153,7 @@ export function FollowSheet({ assets, onClose, onManual }: Props) {
                       <strong>{r.quote ? formatMoney(r.quote.price, r.quote.currency) : '—'}</strong>
                     </span>
                     <span className="row-sub">
-                      {r.hit.symbol} · {ASSET_TYPES[r.hit.type]}
+                      {r.hit.symbol} · {r.hit.exchange ?? ASSET_TYPES[r.hit.type]}
                     </span>
                     <span className="row-sub row-end">{r.quote ? 'Seguir' : 'Sin cotización · Seguir'}</span>
                   </button>
@@ -162,8 +163,9 @@ export function FollowSheet({ assets, onClose, onManual }: Props) {
           )}
           {state.results.some((r) => !r.quote) && (
             <p className="small muted">
-              El plan gratuito de Finnhub solo da cotización de valores de EE. UU. Puedes seguir los demás y ponerles un
-              precio manual.
+              {hasYahoo
+                ? 'No se ha podido obtener la cotización de algunos. Puedes seguirlos y ponerles un precio a mano.'
+                : 'El plan gratuito de Finnhub solo da cotización de valores de EE. UU. Puedes seguir los demás y ponerles un precio manual, o configurar el proxy de Yahoo en Ajustes.'}
             </p>
           )}
         </>

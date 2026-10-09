@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { db, getMeta } from '../data/db'
 import { QUOTE_META } from '../data/repo'
 import type { FxRates, Quote } from '../domain/types'
+import type { BaseCurrency } from '../domain/valuation'
 import { useToast } from '../ui/Toast'
 import { missingRates } from './fx'
 import { refreshQuotes, type RefreshReport } from './service'
@@ -14,6 +15,10 @@ interface QuotesState {
   /** Último intento de actualizar (ISO). */
   refreshedAt?: string
   hasKey: boolean
+  /** Hay un proxy de Yahoo configurado. */
+  hasYahoo: boolean
+  /** Moneda en la que se enseñan los precios como principal (la otra va debajo, más pequeña). */
+  baseCurrency: BaseCurrency
   /** Resultado de la última actualización de esta sesión, con los fallos. */
   lastReport?: RefreshReport
   refresh: (opts?: { silent?: boolean }) => Promise<RefreshReport | undefined>
@@ -45,6 +50,9 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
   const assetList = useLiveQuery(() => db.assets.toArray())
   const refreshedAt = useLiveQuery(() => db.meta.get(QUOTE_META.refreshedAt).then((e) => e?.value as string | undefined))
   const hasKey = useLiveQuery(() => db.meta.get(QUOTE_META.finnhubKey).then((e) => !!e?.value)) ?? false
+
+  const hasYahoo = useLiveQuery(() => db.meta.get(QUOTE_META.yahooProxy).then((e) => !!e?.value)) ?? false
+  const baseCurrency = (useLiveQuery(() => db.meta.get(QUOTE_META.baseCurrency).then((e) => e?.value as BaseCurrency | undefined)) ?? 'EUR') as BaseCurrency
 
   const quotes = useMemo(() => (list ? new Map(list.map((q) => [q.assetId, q])) : EMPTY), [list])
 
@@ -90,8 +98,8 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
   }, [fxEntry, fx, assetList, refresh])
 
   const value = useMemo(
-    () => ({ quotes, fx, refreshing, refreshedAt, hasKey, lastReport, refresh }),
-    [quotes, fx, refreshing, refreshedAt, hasKey, lastReport, refresh],
+    () => ({ quotes, fx, refreshing, refreshedAt, hasKey, hasYahoo, baseCurrency, lastReport, refresh }),
+    [quotes, fx, refreshing, refreshedAt, hasKey, hasYahoo, baseCurrency, lastReport, refresh],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

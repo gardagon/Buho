@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { db } from '../data/db'
 import { addPricePoint, deletePricePoint } from '../data/repo'
 import { Decimal, formatMoney, formatPercent, parseUserNumber } from '../domain/numbers'
-import { counterPrice, dayChange, pickPrice, priceHistory, priceToEur } from '../domain/valuation'
+import { dayChange, displayPrice, pickPrice, priceHistory, priceToEur } from '../domain/valuation'
 import type { Asset, PricePoint, QuoteDay } from '../domain/types'
 import { useQuotes } from '../quotes/QuotesContext'
 import { rateForPoint } from '../quotes/fx'
@@ -31,7 +31,7 @@ interface Props {
 /** Ficha de un valor: precio actual en dos monedas, evolución e histórico de precios. */
 export function PriceDetail({ asset, onClose, onEdit }: Props) {
   const toast = useToast()
-  const { quotes, fx } = useQuotes()
+  const { quotes, fx, baseCurrency } = useQuotes()
   const points = useLiveQuery(() => db.prices.where('assetId').equals(asset.id).toArray(), [asset.id]) ?? EMPTY_POINTS
   const days = useLiveQuery(() => db.quoteDays.where('assetId').equals(asset.id).toArray(), [asset.id]) ?? EMPTY_DAYS
   const [date, setDate] = useState(today())
@@ -41,7 +41,7 @@ export function PriceDetail({ asset, onClose, onEdit }: Props) {
   const [saving, setSaving] = useState(false)
 
   const current = pickPrice(asset, quotes.get(asset.id))
-  const other = current && counterPrice(current, fx)
+  const shown = current && displayPrice(current, baseCurrency, fx)
   const change = current && dayChange(current)
   const live = useMemo(() => points.filter((p) => !p.deleted).sort((a, b) => (a.date < b.date ? 1 : -1)), [points])
   const series = useMemo(() => priceHistory(points, days, fx), [points, days, fx])
@@ -93,8 +93,8 @@ export function PriceDetail({ asset, onClose, onEdit }: Props) {
         {current ? (
           <>
             <p className="detail-price num">
-              <strong>{formatMoney(current.price, current.currency)}</strong>
-              {other && <span className="muted"> ≈ {formatMoney(other.amount, other.currency)}</span>}
+              <strong>{shown ? formatMoney(shown.main.amount, shown.main.currency) : formatMoney(current.price, current.currency)}</strong>
+              {shown?.other && <span className="muted"> ≈ {formatMoney(shown.other.amount, shown.other.currency)}</span>}
             </p>
             <p className="small muted">
               {asset.ticker ? `${asset.ticker} · ` : ''}

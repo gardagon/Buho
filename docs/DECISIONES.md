@@ -54,6 +54,16 @@ Registro de las decisiones tomadas y por qué. Si alguna cambia, añade una entr
 
 **Pendiente:** valorar un segundo proveedor gratuito que cubra Europa si el precio manual resulta incómodo. No se ha podido probar contra las APIs reales desde el entorno de desarrollo (red bloqueada): solo hay tests con respuestas simuladas.
 
+## 2026-10-09: Yahoo Finance con un proxy propio en Cloudflare Workers
+
+**Decisión:** añadir Yahoo Finance como segundo proveedor de cotizaciones, a través de un Worker de Cloudflare que despliega cada persona en su cuenta gratuita (`worker/yahoo-proxy.js`, pasos en `docs/YAHOO.md`). Finnhub sigue siendo el primero; lo que no cubre pasa a Yahoo. Si hay proxy, la búsqueda de valores usa Yahoo.
+
+**Por qué:** Finnhub gratuito no cubre BME ni Xetra (ver la entrada del 2026-10-08). Alpha Vantage y Twelve Data tampoco lo resuelven gratis y exigen clave. Yahoo cubre los mercados europeos sin registro, pero bloquea las llamadas desde navegadores, de ahí el proxy.
+
+**Riesgos aceptados:** la API de Yahoo no es oficial y sus condiciones restringen el uso automatizado; puede cambiar o limitar. Se acepta para uso personal. Se aísla en el Worker (la app habla con un formato propio) para que un cambio de Yahoo se arregle sin publicar la app. Cumple la regla de coste cero (plan gratuito de Cloudflare) y de privacidad (solo salen tickers).
+
+**Pendiente:** probarlo contra Yahoo real; desde el entorno de desarrollo no hay salida a la red, así que solo está probado con respuestas simuladas.
+
 ## 2026-10-08: stack
 
 - Vite + React + TypeScript. `vite-plugin-pwa` para service worker y manifiesto.

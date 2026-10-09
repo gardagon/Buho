@@ -15,6 +15,7 @@ Buho es una aplicación web estática (PWA) que se ejecuta entera en el navegado
 │   sync/  ──── Google Identity Services (token, 1 h) ─────┼──► Google Drive
 │                                                          │     buho-cartera.json
 │   quotes/ ── clave API del usuario ──────────────────────┼──► Finnhub, Frankfurter (BCE)
+│        └── proxy propio (Cloudflare Worker) ─────────────┼──► Yahoo Finance
 └──────────────────────────────────────────────────────────┘
         ▲
         │  HTML, JS, CSS, iconos (estáticos)
@@ -56,6 +57,7 @@ src/
   quotes/
     types.ts         PriceProvider, QuoteResult
     finnhub.ts       Proveedor Finnhub (REST)
+    yahoo.ts         Proveedor Yahoo a través del proxy propio (formato propio y estable)
     fx.ts            Tipos de cambio del BCE vía Frankfurter
     service.ts       refreshQuotes, searchSecurities (búsqueda con cotización) y followSecurity
     QuotesContext.tsx  Estado para React; actualiza al abrir la app
@@ -65,6 +67,7 @@ src/
   App.tsx            Navegación por hash (#/cartera…), hojas modales, aviso de actualización
   main.tsx
   styles.css         Variables de diseño (claro/oscuro) y estilos
+worker/              yahoo-proxy.js: proxy de Yahoo para Cloudflare Workers (+ su test)
 public/              logo.png (fuente de los iconos; se regeneran con `npx pwa-assets-generator`) e iconos PNG generados
 ```
 
@@ -87,6 +90,7 @@ Ver `src/domain/types.ts`. Puntos clave:
 ## Pantallas y precios
 
 - **Seguimiento → ficha del valor** (`ui/PriceDetail.tsx`): precio actual en dos monedas (en la que se ve y su equivalente en euros o dólares con el cambio actual del BCE, `counterPrice`), gráfico en euros (`ui/PriceChart.tsx`, serie `priceHistory`) y lista de los precios puestos a mano, con alta y borrado.
+- **Seguimiento:** cada fila enseña el precio en la **moneda principal** elegida en Ajustes (euros o dólares), con el % del día entre paréntesis en verde o rojo; debajo, más pequeño, el equivalente en la otra moneda, y a la izquierda el ticker con la fecha y hora de la cotización (o la fecha y «(manual)» si el precio lo puso la persona). La Cartera y los cálculos fiscales siempre van en euros.
 - El botón «Añadir movimiento» solo existe en la pestaña Movimientos.
 - **Deslizar a los lados** cambia de pestaña en el orden de la barra (Seguimiento, Cartera, Movimientos, Activos, Ajustes): `ui/useSwipeNav.ts`. Solo con el dedo; no actúa con una ventana abierta, sobre campos de texto ni sobre tablas que se desplazan, y pide un gesto claramente horizontal.
 - **Ficha de una posición** (`ui/PositionDetail.tsx`, se abre al tocar un valor de la Cartera): acciones, precio medio, invertido, valor y beneficio ahora; y cómo ha ido a 1 semana, 1 mes, 1 año, 2 y 5 años (`domain/performance.ts`). Cada periodo tiene en cuenta los títulos que había en cartera en esa fecha y lo comprado, vendido y cobrado desde entonces: beneficio = valor ahora − valor entonces − compras + ventas + dividendos; el % es sobre el dinero de partida más lo comprado. El precio de cada fecha es el último conocido (manual, cotización guardada o el de tus propias compras y ventas); si es de más de 3 días antes, se indica cuál.
@@ -145,7 +149,7 @@ interface PriceProvider {
 }
 ```
 
-- Un proveedor por archivo en `src/quotes/`. Hoy solo Finnhub (REST). El ticker se envía tal cual lo escribió el usuario; la divisa de la cotización es la del activo.
+- Un proveedor por archivo en `src/quotes/`. Hoy Finnhub (REST) y Yahoo (vía proxy propio, ver `docs/YAHOO.md`). `refreshQuotes` pide primero a Finnhub; lo que este no puede cotizar pasa a Yahoo si está configurado. Yahoo da la divisa real de cada valor y se normalizan los peniques de Londres (GBp → GBP). El ticker se envía tal cual lo escribió el usuario; la divisa de la cotización es la del activo.
 - «Seguir un valor» (`ui/FollowSheet.tsx`) busca por nombre o ticker con `/search` de Finnhub, muestra la cotización de cada resultado y, al elegir uno, crea el activo con `watched` (o reutiliza el que ya tenga ese ticker). Necesita la clave; sin ella ofrece seguir un activo existente o añadirlo a mano. La divisa se estima por el sufijo de bolsa y se puede corregir en el activo.
 - `refreshQuotes` (`quotes/service.ts`) pide los activos en cartera o marcados con `watched`, guarda cada `Quote` en la tabla `quotes` y los tipos de cambio en `meta`. Un fallo en un activo no frena a los demás; los motivos se muestran en Ajustes.
 - Los tipos de cambio (`FxRates`) son unidades de divisa por 1 EUR, como `Movement.fxRate`. Se piden a Frankfurter (BCE, sin clave).

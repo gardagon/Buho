@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getMeta, setMeta } from '../../data/db'
 import { QUOTE_META } from '../../data/repo'
 import { useQuotes } from '../../quotes/QuotesContext'
+import { normalizeProxyUrl, testYahooProxy } from '../../quotes/yahoo'
 import { parseSnapshot } from '../../data/merge'
 import { exportSnapshot, mergeIntoLocal, wipeLocalData } from '../../data/repo'
 import { META } from '../../sync/sync'
@@ -17,11 +18,14 @@ export function Ajustes() {
   const [clientId, setClientId] = useState('')
   const quotes = useQuotes()
   const [finnhubKey, setFinnhubKey] = useState('')
+  const [yahooProxy, setYahooProxy] = useState('')
+  const [testing, setTesting] = useState(false)
   const envClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
   useEffect(() => {
     void getMeta<string>(META.clientId).then((v) => setClientId(v ?? ''))
     void getMeta<string>(QUOTE_META.finnhubKey).then((v) => setFinnhubKey(v ?? ''))
+    void getMeta<string>(QUOTE_META.yahooProxy).then((v) => setYahooProxy(v ?? ''))
   }, [])
 
   async function saveFinnhubKey() {
@@ -35,6 +39,28 @@ export function Ajustes() {
     await setMeta(META.clientId, clientId.trim() || undefined)
     await s.refreshConfig()
     toast(clientId.trim() ? 'ID de cliente guardado' : 'ID de cliente borrado')
+  }
+
+  async function saveYahooProxy() {
+    const raw = yahooProxy.trim()
+    const url = raw ? normalizeProxyUrl(raw) : undefined
+    if (raw && !url) {
+      toast('La dirección debe empezar por https:// (p. ej. https://buho-yahoo.tu-usuario.workers.dev).')
+      return
+    }
+    await setMeta(QUOTE_META.yahooProxy, url)
+    setYahooProxy(url ?? '')
+    toast(url ? 'Proxy de Yahoo guardado' : 'Proxy de Yahoo borrado')
+    if (url) void quotes.refresh()
+  }
+
+  async function checkYahooProxy() {
+    setTesting(true)
+    try {
+      toast((await testYahooProxy(yahooProxy)).message)
+    } finally {
+      setTesting(false)
+    }
   }
 
   async function download() {
@@ -149,6 +175,33 @@ export function Ajustes() {
         </details>
       </section>
 
+      <section className="settings-group" aria-labelledby="base-h">
+        <h2 id="base-h">Moneda principal</h2>
+        <p>
+          Es la que verás como principal en Seguimiento. La otra (euros o dólares) aparece debajo, más pequeña. La
+          Cartera y los cálculos fiscales siguen siempre en euros.
+        </p>
+        <div className="segmented" role="radiogroup" aria-label="Moneda principal">
+          {(
+            [
+              ['EUR', 'Euros (€)'],
+              ['USD', 'Dólares ($)'],
+            ] as const
+          ).map(([code, label]) => (
+            <label key={code}>
+              <input
+                type="radio"
+                name="base-currency"
+                value={code}
+                checked={quotes.baseCurrency === code}
+                onChange={() => void setMeta(QUOTE_META.baseCurrency, code)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      </section>
+
       <section className="settings-group" aria-labelledby="quotes-h">
         <h2 id="quotes-h">Cotizaciones</h2>
         <p>
@@ -177,6 +230,35 @@ export function Ajustes() {
             {quotes.refreshing ? 'Actualizando…' : 'Actualizar ahora'}
           </button>
         </div>
+        <details open={!!yahooProxy}>
+          <summary className="small muted">Yahoo Finance (para BME, Xetra y el resto de valores europeos)</summary>
+          <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+            <p className="small muted">
+              Yahoo no deja que una web lo consulte directamente, así que hace falta un pequeño proxy tuyo y gratuito en
+              Cloudflare. Los pasos están en <strong>docs/YAHOO.md</strong> del proyecto. El proxy solo ve los tickers que
+              consultas, nunca tus movimientos. Se usa para lo que Finnhub no cubre, y también para buscar valores.
+            </p>
+            <label className="field">
+              <span>Dirección del proxy</span>
+              <input
+                value={yahooProxy}
+                onChange={(e) => setYahooProxy(e.target.value)}
+                placeholder="https://buho-yahoo.tu-usuario.workers.dev"
+                inputMode="url"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+            </label>
+            <div className="actions">
+              <button className="btn" onClick={saveYahooProxy}>
+                Guardar dirección
+              </button>
+              <button className="btn" onClick={checkYahooProxy} disabled={testing || yahooProxy.trim() === ''}>
+                {testing ? 'Probando…' : 'Probar'}
+              </button>
+            </div>
+          </div>
+        </details>
         {quotes.lastReport && (quotes.lastReport.failed.length > 0 || quotes.lastReport.fxError) && (
           <ul className="error-text">
             {quotes.lastReport.failed.map((f) => (

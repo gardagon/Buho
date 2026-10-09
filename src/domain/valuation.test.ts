@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { Decimal } from './numbers'
 import { computePortfolio } from './portfolio'
 import type { Asset, FxRates, Movement, Quote } from './types'
-import { counterPrice, dayChange, pickPrice, priceHistory, valuePositions } from './valuation'
+import { convertAmount, counterPrice, dayChange, displayPrice, pickPrice, priceHistory, valuePositions } from './valuation'
 
 const stamp = { createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }
 const asset = (id: string, currency: string, extra: Partial<Asset> = {}): Asset => ({
@@ -159,5 +160,35 @@ describe('priceHistory', () => {
   it('deja fuera los puntos borrados y los de divisas sin cambio', () => {
     const h = priceHistory([{ ...point('2026-10-01', '10', 'EUR'), deleted: true }, point('2026-10-02', '10', 'GBP')], [], fx)
     expect(h).toEqual([])
+  })
+})
+
+describe('moneda principal', () => {
+  const eurPrice = () => pickPrice(asset('x', 'EUR', { manualPrice: '100', manualPriceDate: '2026-10-08' }))!
+  const usdPrice = () => pickPrice(asset('x', 'USD', { manualPrice: '120', manualPriceDate: '2026-10-08' }))!
+
+  it('un precio en dólares con euros como principal: 120 $ ÷ 1,2 = 100 €, y debajo los dólares', () => {
+    const r = displayPrice(usdPrice(), 'EUR', fx)
+    expect([r.main.amount.toString(), r.main.currency]).toEqual(['100', 'EUR'])
+    expect([r.other?.amount.toString(), r.other?.currency]).toEqual(['120', 'USD'])
+  })
+
+  it('un precio en euros con dólares como principal: 100 € × 1,2 = 120 $, y debajo los euros', () => {
+    const r = displayPrice(eurPrice(), 'USD', fx)
+    expect([r.main.amount.toString(), r.main.currency]).toEqual(['120', 'USD'])
+    expect([r.other?.amount.toString(), r.other?.currency]).toEqual(['100', 'EUR'])
+  })
+
+  it('sin cambio para convertir, se enseña tal cual y sin equivalente', () => {
+    const r = displayPrice(pickPrice(asset('x', 'GBP', { manualPrice: '10', manualPriceDate: '2026-10-08' }))!, 'EUR', fx)
+    expect([r.main.amount.toString(), r.main.currency]).toEqual(['10', 'GBP'])
+    expect(r.other).toBeUndefined()
+  })
+
+  it('convertAmount pasa por el euro y respeta la misma divisa', () => {
+    expect(convertAmount(new Decimal(5), 'USD', 'USD', fx)?.toString()).toBe('5')
+    expect(convertAmount(new Decimal(120), 'USD', 'EUR', fx)?.toString()).toBe('100')
+    expect(convertAmount(new Decimal(100), 'EUR', 'USD', fx)?.toString()).toBe('120')
+    expect(convertAmount(new Decimal(1), 'GBP', 'EUR', fx)).toBeUndefined()
   })
 })

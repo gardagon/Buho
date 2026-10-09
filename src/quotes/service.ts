@@ -4,7 +4,8 @@ import { computePortfolio } from '../domain/portfolio'
 import type { FxRates, Quote } from '../domain/types'
 import { fetchFxRates } from './fx'
 import { createFinnhubProvider } from './finnhub'
-import type { Fetcher, SearchHit } from './types'
+import type { Fetcher, PriceProvider, SearchHit } from './types'
+import { createYahooProvider, normalizeProxyUrl } from './yahoo'
 
 export interface RefreshReport {
   /** Cuántas cotizaciones se actualizaron. */
@@ -22,25 +23,37 @@ export interface RefreshReport {
  * tipos de cambio: los precios manuales siguen valiendo.
  */
 export async function refreshQuotes(fetcher?: Fetcher): Promise<RefreshReport> {
-  const [allAssets, movements, apiKey] = await Promise.all([
+  const [allAssets, movements, apiKey, proxy] = await Promise.all([
     db.assets.toArray(),
     db.movements.toArray(),
     getMeta<string>(QUOTE_META.finnhubKey),
+    getMeta<string>(QUOTE_META.yahooProxy),
   ])
   const assets = allAssets.filter((a) => !a.deleted)
   const held = new Set(computePortfolio(assets, movements.filter((m) => !m.deleted)).positions.map((p) => p.asset.id))
   const tracked = assets.filter((a) => held.has(a.id) || a.watched)
   const report: RefreshReport = { updated: 0, failed: [], usedProvider: false }
 
-  if (apiKey) {
-    const provider = createFinnhubProvider(apiKey, fetcher)
-    const result = await provider.getQuotes(tracked.filter((a) => provider.supports(a)))
+  // Finnhub primero (oficial); lo que no pueda cotizar pasa a Yahoo, si está configurado.
+  const providers: PriceProvider[] = []
+  if (apiKey) providers.push(createFinnhubProvider(apiKey, fetcher))
+  const proxyUrl = proxy ? normalizeProxyUrl(proxy) : null
+  if (proxyUrl) providers.push(createYahooProvider(proxyUrl, fetcher))
+
+  const errors = new Map<string, string>()
+  let pending = tracked
+  for (const provider of providers) {
+    const result = await provider.getQuotes(pending.filter((a) => provider.supports(a)))
     report.usedProvider = true
     await saveQuotes([...result.quotes.values()])
-    report.updated = result.quotes.size
-    for (const [id, message] of result.errors) {
-      report.failed.push({ assetName: assets.find((a) => a.id === id)?.name ?? id, message })
-    }
+    report.updated += result.quotes.size
+    for (const id of result.quotes.keys()) errors.delete(id)
+    // Si un valor falla en dos proveedores, se cuenta el último fallo, que es el más completo.
+    for (const [id, message] of result.errors) errors.set(id, message)
+    pending = pending.filter((a) => !result.quotes.has(a.id))
+  }
+  for (const [id, message] of errors) {
+    report.failed.push({ assetName: assets.find((a) => a.id === id)?.name ?? id, message })
   }
 
   // Divisas de lo que se sigue y de lo que puede traer una cotización.
@@ -72,10 +85,14 @@ export interface SearchResult {
  * se devuelve igualmente: se puede seguir y ponerle precio a mano.
  */
 export async function searchSecurities(query: string, fetcher?: Fetcher): Promise<SearchResult[]> {
-  const apiKey = await getMeta<string>(QUOTE_META.finnhubKey)
-  if (!apiKey) throw new Error('Para buscar valores hace falta tu clave gratuita de Finnhub. Añádela en Ajustes.')
-  const provider = createFinnhubProvider(apiKey, fetcher)
-  const hits = await provider.search!(query)
+  const [apiKey, proxy] = await Promise.all([getMeta<string>(QUOTE_META.finnhubKey), getMeta<string>(QUOTE_META.yahooProxy)])
+  // Yahoo (si está configurado) busca en más mercados y da la divisa real; si no, Finnhub.
+  const proxyUrl = proxy ? normalizeProxyUrl(proxy) : null
+  const provider = proxyUrl ? createYahooProvider(proxyUrl, fetcher) : apiKey ? createFinnhubProvider(apiKey, fetcher) : null
+  if (!provider?.search) {
+    throw new Error('Para buscar valores hace falta tu clave gratuita de Finnhub o el proxy de Yahoo. Añádelos en Ajustes.')
+  }
+  const hits = await provider.search(query)
   // Cotizamos con un activo provisional: el id es el propio símbolo.
   const probes = hits.map((h) => ({
     id: h.symbol,
@@ -87,7 +104,11 @@ export async function searchSecurities(query: string, fetcher?: Fetcher): Promis
     updatedAt: '',
   }))
   const { quotes } = await provider.getQuotes(probes)
-  return hits.map((hit) => ({ hit, quote: quotes.get(hit.symbol) }))
+  // La divisa de la cotización es la real; la del resultado era solo una estimación.
+  return hits.map((hit) => {
+    const quote = quotes.get(hit.symbol)
+    return { hit: quote ? { ...hit, currency: quote.currency } : hit, quote }
+  })
 }
 
 /**

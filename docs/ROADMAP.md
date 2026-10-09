@@ -35,15 +35,18 @@
 - [ ] Probar con una clave real de Finnhub y con Frankfurter desde el navegador (CORS); solo se ha probado con respuestas simuladas
 - [ ] Segundo proveedor que cubra BME y Xetra (Twelve Data u otro) si el precio manual se queda corto
 
-### Pendiente: proveedor de cotizaciones sin registro (decidir)
-- [ ] Probar Alpha Vantage (clave por formulario, 25 peticiones/día): ¿cubre Madrid y Xetra y se puede llamar desde el navegador?
-- [ ] Alternativa: Cloudflare Worker gratuito como proxy de Yahoo Finance (sin clave para el usuario, pero fuente no oficial)
+### Yahoo Finance con proxy propio (BME, Xetra y resto de Europa)
+- [x] Worker de Cloudflare (`worker/yahoo-proxy.js`), proveedor `yahoo.ts`, respaldo cuando Finnhub falla, búsqueda y ajuste de la dirección
+- [x] Guía de instalación (`docs/YAHOO.md`)
+- [ ] Desplegar el Worker y probarlo con Yahoo real (solo está probado con respuestas simuladas)
+- [ ] Valorar si hace falta caché propia o un segundo respaldo si Yahoo limita las llamadas
 
 ### Modelo de datos según el uso real del usuario
 - [x] Compras y ventas con el precio en $ o €, y comisiones y total en EUR; lo que falta se calcula
 - [x] Precio medio real por título con comisiones incluidas
 - [x] Histórico de precios manuales por valor, con gráfico, y precio en dólares o euros con su equivalente
 - [x] Cambio del BCE del día de cada movimiento (Frankfurter)
+- [x] Moneda principal (euros o dólares) en Seguimiento, con la otra debajo; fecha y hora de cada cotización; % en verde y rojo
 - [x] Cambio de pestaña deslizando
 - [x] Ficha de posición: rendimiento a 1 semana, 1 mes, 1 año, 2 y 5 años, y detalle por compra con sus ventas FIFO
 - [ ] Alinear el resto del modelo con la hoja de cálculo del usuario (campos, cuentas, divisas)

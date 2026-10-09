@@ -82,8 +82,12 @@ export async function mergeIntoLocal(remote: Snapshot): Promise<Snapshot> {
  */
 export const QUOTE_META = {
   finnhubKey: 'quotes.finnhubKey',
+  /** Dirección del proxy de Yahoo (worker/yahoo-proxy.js). */
+  yahooProxy: 'quotes.yahooProxy',
   fx: 'quotes.fx',
   refreshedAt: 'quotes.refreshedAt',
+  /** Moneda principal con la que se enseñan los precios en Seguimiento. */
+  baseCurrency: 'ui.baseCurrency',
 } as const
 
 export async function saveQuotes(quotes: Quote[]) {

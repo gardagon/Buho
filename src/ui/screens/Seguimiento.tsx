@@ -1,8 +1,8 @@
 import { formatMoney, formatPercent } from '../../domain/numbers'
 import { ASSET_TYPES, type Asset } from '../../domain/types'
-import { counterPrice, dayChange, pickPrice } from '../../domain/valuation'
+import { dayChange, displayPrice, pickPrice } from '../../domain/valuation'
 import { useQuotes } from '../../quotes/QuotesContext'
-import { priceNote, RefreshLine } from '../prices'
+import { priceStamp, RefreshLine } from '../prices'
 
 interface Props {
   assets: Asset[]
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function Seguimiento({ assets, onOpen, onAdd }: Props) {
-  const { quotes, fx, hasKey } = useQuotes()
+  const { quotes, fx, hasKey, baseCurrency } = useQuotes()
   const watched = assets.filter((a) => a.watched)
 
   return (
@@ -43,26 +43,24 @@ export function Seguimiento({ assets, onOpen, onAdd }: Props) {
             {watched.map((a) => {
               const price = pickPrice(a, quotes.get(a.id))
               const change = price && dayChange(price)
-              const other = price && counterPrice(price, fx)
+              const shown = price && displayPrice(price, baseCurrency, fx)
               return (
                 <li key={a.id}>
                   <button className="row" onClick={() => onOpen(a)}>
                     <span className="row-title">{a.name}</span>
                     <span className="row-end num">
-                      <strong>{price ? formatMoney(price.price, price.currency) : '—'}</strong>
-                      {other && <span className="muted"> ≈ {formatMoney(other.amount, other.currency)}</span>}
+                      <strong>{shown ? formatMoney(shown.main.amount, shown.main.currency) : '—'}</strong>
+                      {change && (
+                        <span className={`pct ${change.abs.isNeg() ? 'loss' : 'gain'}`}> ({formatPercent(change.pct)})</span>
+                      )}
                     </span>
                     <span className="row-sub">
                       {a.ticker ?? ASSET_TYPES[a.type]}
-                      {price && ` · ${priceNote(price)}`}
+                      {price ? ` · ${priceStamp(price)}` : ' · Sin precio'}
                     </span>
-                    {change ? (
-                      <span className={`row-sub row-end num ${change.abs.isNeg() ? 'loss' : 'gain'}`}>
-                        {formatPercent(change.pct)}
-                      </span>
-                    ) : (
-                      <span className="row-sub row-end">{price ? '' : 'Sin precio'}</span>
-                    )}
+                    <span className="row-sub row-end num">
+                      {shown?.other && `≈ ${formatMoney(shown.other.amount, shown.other.currency)}`}
+                    </span>
                   </button>
                 </li>
               )

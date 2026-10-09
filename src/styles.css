@@ -245,6 +245,9 @@ section > h2 { font-size: var(--step-1); margin-bottom: 8px; }
 .row-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-sub { font-size: var(--step--1); color: var(--ink-2); }
 .row-end { text-align: right; }
+/* El gris de .row-sub no debe pisar el verde y el rojo de las ganancias y pérdidas. */
+.row-sub.gain, .row-end .gain { color: var(--gain); }
+.row-sub.loss, .row-end .loss { color: var(--loss); }
 
 .day-label {
   margin: 18px 4px 6px;
@@ -599,3 +602,5 @@ dialog.sheet[data-tone] .total-line { border-left: 4px solid var(--tone); }
 main.slide-left { animation: enter-from-right 0.2s ease-out; }
 main.slide-right { animation: enter-from-left 0.2s ease-out; }
 @media (prefers-reduced-motion: reduce) { main.slide-left, main.slide-right { animation: none; } }
+
+.row .pct { font-weight: 600; }

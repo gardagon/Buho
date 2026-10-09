@@ -7,6 +7,8 @@ export interface SearchHit {
   type: AssetType
   /** Divisa estimada; el proveedor no la da. Se puede corregir al editar el activo. */
   currency: string
+  /** Bolsa o mercado, si el proveedor lo dice (p. ej. «Madrid»). */
+  exchange?: string
 }
 
 export interface QuoteResult {
