@@ -53,9 +53,11 @@ function record(entry: NetEntry) {
  * comporta como una caída de red, que es lo que ya tratan los proveedores.
  * Anota cada petición (destino, estado y duración) para el diagnóstico.
  */
-export const timedFetch: Fetcher = async (input, init) => {
+export const makeTimedFetch =
+  (timeoutMs: number): Fetcher =>
+  async (input, init) => {
   const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS)
+  const timer = setTimeout(() => ctl.abort(), timeoutMs)
   const t0 = performance.now()
   const target = describe(input)
   const done = (status: NetEntry['status']) => record({ at: new Date().toISOString(), target, ms: Math.round(performance.now() - t0), status })
@@ -71,3 +73,5 @@ export const timedFetch: Fetcher = async (input, init) => {
     clearTimeout(timer)
   }
 }
+
+export const timedFetch: Fetcher = makeTimedFetch(REQUEST_TIMEOUT_MS)

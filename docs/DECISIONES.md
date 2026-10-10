@@ -2,6 +2,13 @@
 
 Registro de las decisiones tomadas y por qué. Si alguna cambia, añade una entrada nueva con la fecha en vez de borrar la anterior.
 
+## 2026-10-10: cada valor recuerda su fuente de cotización
+
+**Contexto.** El registro de red mostró que Finnhub agotaba los 25 s de espera en todos sus valores (incluidos los de EE. UU.) mientras Yahoo respondía los 15 en 0,5 s. Pedir primero a Finnhub todo lo que el plan gratuito no cubre, y en lotes de cinco, sumaba minutos.
+
+**Decisión.** Guardar por valor qué proveedor le dio precio y preguntar primero a ese; la otra fuente solo se usa si la habitual no devuelve datos. Sin historial, Finnhub solo para tickers sin sufijo de bolsa. Finnhub con 8 s de espera y 30 min de descanso si no conecta. Una caída de red no cambia la fuente habitual: solo la cambia que la fuente no tenga datos del valor.
+
+
 ## 2026-10-10: la sesión de Drive caduca cada hora y se deja así
 
 **Contexto.** En el navegador, Google Identity Services solo da un token de acceso de una hora. El token de renovación exige un servidor que guarde el secreto del cliente. Una app nativa (como Delfin, con `google_sign_in` en Android) renueva sin ventana porque lo resuelve Google Play Services.

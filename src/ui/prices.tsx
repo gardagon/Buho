@@ -46,11 +46,13 @@ export function RefreshLine() {
   )
 }
 
+const clock = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 const secs = (ms?: number) => (ms === undefined ? undefined : `${(ms / 1000).toFixed(1).replace('.', ',')} s`)
 
 /** Cuánto tardó la última actualización de precios y la última descarga de histórico: para ver dónde se va el tiempo. */
 export function LastRunInfo() {
   const run = useLiveQuery(() => db.meta.get(QUOTE_META.lastRun).then((e) => e?.value as Record<string, number | string> | undefined))
+  const rest = useLiveQuery(() => db.meta.get(QUOTE_META.finnhubDownUntil).then((e) => e?.value as string | undefined))
   const hist = useLiveQuery(() => db.meta.get(QUOTE_META.lastHistoryRun).then((e) => e?.value as Record<string, number | string> | undefined))
   if (!run && !hist) return null
   const parts = run
@@ -69,6 +71,11 @@ export function LastRunInfo() {
           {(run.failed as number) > 0 && `, ${run.failed} con error`}.
         </p>
       )}
+      {rest && rest > new Date().toISOString() && (
+        <p className="loss">
+          Finnhub no responde: se usa Yahoo y no se le vuelve a preguntar hasta las {clock.format(new Date(rest)).slice(0, 5)}.
+        </p>
+      )}
       {hist && (
         <p>
           Último histórico ({dateTime.format(new Date(hist.at as string))}): {hist.days as number} días en {secs(hist.ms as number)}
@@ -79,7 +86,6 @@ export function LastRunInfo() {
   )
 }
 
-const clock = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 /** Registro de las últimas peticiones de red de las cotizaciones: destino, estado y lo que tardó. */
 export function NetDebug() {

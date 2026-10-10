@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { db, setMeta } from '../data/db'
+import { db, getMeta, setMeta } from '../data/db'
 import { QUOTE_META, saveAsset, saveMovement, wipeLocalData } from '../data/repo'
 import type { Asset } from '../domain/types'
 import { rangeForDays, refreshHistory, refreshQuotes, saveTodayPrices, searchSecurities } from './service'
@@ -133,29 +133,76 @@ describe('Finnhub con Yahoo de respaldo', () => {
     expect((await db.quotes.get(san))?.provider).toBe('yahoo')
   })
 
-  it('los proveedores van a la vez y, si los dos dan precio, gana Finnhub aunque Yahoo termine antes', async () => {
-    const apple = await saveAsset({ name: 'Apple', type: 'accion', currency: 'USD', ticker: 'AAPL', watched: true })
-    await setMeta(QUOTE_META.finnhubKey, 'K')
-    await setMeta(QUOTE_META.yahooProxy, PROXY)
-    let yahooDone = false
-    const slowFinnhub = async (url: RequestInfo | URL) => {
+  /** Cuenta las llamadas a cada proveedor. */
+  const counting = (calls: { finnhub: string[]; yahoo: string[] }, finnhub: (u: string) => Response | Promise<Response>) =>
+    async (url: RequestInfo | URL) => {
       const u = String(url)
-      if (u.includes('finnhub.io')) {
-        // Finnhub solo responde cuando Yahoo ya ha terminado: si fueran en serie, esto no acabaría nunca.
-        while (!yahooDone) await new Promise((r) => setTimeout(r, 5))
-        return json({ c: 190, pc: 188, t: 1_790_000_000 })
+      if (u.includes('finnhub.io/api/v1/quote')) {
+        calls.finnhub.push(new URL(u).searchParams.get('symbol') ?? '')
+        return finnhub(u)
       }
-      if (u.includes('/quote')) {
-        yahooDone = true
-        return json({ quotes: { AAPL: { price: 191, currency: 'USD', time: 1_790_000_100 } } })
+      if (u.startsWith(PROXY + '/quote')) {
+        calls.yahoo.push(new URL(u).searchParams.get('symbols') ?? '')
+        return json({
+          quotes: {
+            'SAN.MC': { price: 4.52, currency: 'EUR', time: 1_790_000_000 },
+            AAPL: { price: 191, currency: 'USD', time: 1_790_000_000 },
+          },
+        })
       }
       return fetcher(url)
     }
-    const report = await refreshQuotes(slowFinnhub)
-    expect(report.updated).toBe(1)
+
+  it('recuerda la fuente de cada valor y solo pregunta a la otra si la habitual no da datos', async () => {
+    const apple = await saveAsset({ name: 'Apple', type: 'accion', currency: 'USD', ticker: 'AAPL', watched: true })
+    const san = await saveAsset({ name: 'Santander', type: 'accion', currency: 'EUR', ticker: 'SAN.MC', watched: true })
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    await setMeta(QUOTE_META.yahooProxy, PROXY)
+    const calls = { finnhub: [] as string[], yahoo: [] as string[] }
+    const f = counting(calls, () => json({ c: 190, pc: 188, t: 1_790_000_000 }))
+
+    // Sin historial: AAPL (sin sufijo de bolsa) a Finnhub; SAN.MC directo a Yahoo, sin probar Finnhub.
+    await refreshQuotes(f)
+    expect(calls.finnhub).toEqual(['AAPL'])
+    expect(calls.yahoo).toEqual(['SAN.MC'])
     expect((await db.quotes.get(apple))?.provider).toBe('finnhub')
-    expect(report.timings?.totalMs).toBeGreaterThanOrEqual(0)
-    expect(report.timings?.yahooMs).toBeDefined()
+    expect((await db.quotes.get(san))?.provider).toBe('yahoo')
+    expect(await getMeta(QUOTE_META.sources)).toEqual({ [apple]: 'finnhub', [san]: 'yahoo' })
+
+    // Si Finnhub deja de dar datos de AAPL (sin falta de red), pasa a Yahoo y se recuerda.
+    const g = counting(calls, () => json({ error: 'sin acceso' }, 403))
+    const report = await refreshQuotes(g)
+    expect(report.failed).toEqual([])
+    expect((await db.quotes.get(apple))?.provider).toBe('yahoo')
+    expect(((await getMeta(QUOTE_META.sources)) as Record<string, string>)[apple]).toBe('yahoo')
+
+    // Desde entonces AAPL ya no se pide a Finnhub.
+    calls.finnhub.length = 0
+    await refreshQuotes(g)
+    expect(calls.finnhub).toEqual([])
+  })
+
+  it('si Finnhub no responde, se usa Yahoo y se le deja descansar sin volver a esperarle', async () => {
+    const apple = await saveAsset({ name: 'Apple', type: 'accion', currency: 'USD', ticker: 'AAPL', watched: true })
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    await setMeta(QUOTE_META.yahooProxy, PROXY)
+    await setMeta(QUOTE_META.sources, { [apple]: 'finnhub' }) // su fuente habitual
+    const calls = { finnhub: [] as string[], yahoo: [] as string[] }
+    const down = counting(calls, () => {
+      throw new TypeError('Failed to fetch')
+    })
+
+    const report = await refreshQuotes(down)
+    expect(report.updated).toBe(1)
+    expect((await db.quotes.get(apple))?.provider).toBe('yahoo')
+    expect(calls.finnhub).toEqual(['AAPL'])
+    // Una caída de red no cambia la fuente habitual…
+    expect(((await getMeta(QUOTE_META.sources)) as Record<string, string>)[apple]).toBe('finnhub')
+    // …pero Finnhub descansa: la siguiente vez ni se le pregunta.
+    calls.finnhub.length = 0
+    await refreshQuotes(down)
+    expect(calls.finnhub).toEqual([])
+    expect((await db.quotes.get(apple))?.provider).toBe('yahoo')
   })
 
   it('sin Finnhub, Yahoo cotiza todo', async () => {

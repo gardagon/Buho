@@ -1,4 +1,4 @@
-import { timedFetch } from './http'
+import { makeTimedFetch } from './http'
 import { Decimal } from '../domain/numbers'
 import type { Asset, AssetType, Quote } from '../domain/types'
 import type { Fetcher, PriceProvider, QuoteResult, SearchHit } from './types'
@@ -6,6 +6,9 @@ import type { Fetcher, PriceProvider, QuoteResult, SearchHit } from './types'
 const BASE = 'https://finnhub.io/api/v1'
 /** El plan gratuito permite 60 llamadas por minuto; vamos de 5 en 5. */
 const BATCH = 5
+/** Finnhub responde en décimas de segundo; si no contesta en 8 s, algo falla y no se espera más. */
+const FINNHUB_TIMEOUT_MS = 8_000
+export const FINNHUB_OFFLINE = 'Sin conexión con Finnhub.'
 
 interface FinnhubSearchItem {
   description?: string
@@ -61,7 +64,7 @@ export function finnhubError(status: number): string {
  * BME, Xetra y similares exigen plan de pago (ver docs/DECISIONES.md).
  * El ticker se envía tal cual lo escribió la persona (`AAPL`, `SAN.MC`…).
  */
-export function createFinnhubProvider(apiKey: string, fetcher: Fetcher = timedFetch): PriceProvider {
+export function createFinnhubProvider(apiKey: string, fetcher: Fetcher = makeTimedFetch(FINNHUB_TIMEOUT_MS)): PriceProvider {
   async function one(asset: Asset): Promise<Quote> {
     const url = `${BASE}/quote?symbol=${encodeURIComponent(asset.ticker!)}&token=${encodeURIComponent(apiKey)}`
     const res = await fetcher(url)
@@ -105,15 +108,21 @@ export function createFinnhubProvider(apiKey: string, fetcher: Fetcher = timedFe
     async getQuotes(assets): Promise<QuoteResult> {
       const out: QuoteResult = { quotes: new Map(), errors: new Map() }
       for (let i = 0; i < assets.length; i += BATCH) {
+        const batch = assets.slice(i, i + BATCH)
         await Promise.all(
-          assets.slice(i, i + BATCH).map(async (a) => {
+          batch.map(async (a) => {
             try {
               out.quotes.set(a.id, await one(a))
             } catch (e) {
-              out.errors.set(a.id, e instanceof Error && e.message !== 'Failed to fetch' ? e.message : 'Sin conexión con Finnhub.')
+              out.errors.set(a.id, e instanceof Error && e.message !== 'Failed to fetch' ? e.message : FINNHUB_OFFLINE)
             }
           }),
         )
+        // Si un lote entero no ha podido ni conectar, el resto tampoco: no se hace esperar más.
+        if (batch.every((a) => out.errors.get(a.id) === FINNHUB_OFFLINE)) {
+          for (const a of assets.slice(i + BATCH)) out.errors.set(a.id, FINNHUB_OFFLINE)
+          break
+        }
       }
       return out
     },

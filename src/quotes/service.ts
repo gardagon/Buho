@@ -45,13 +45,19 @@ export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean
   const tracked = assets.filter((a) => held.has(a.id) || a.watched)
   const report: RefreshReport = { updated: 0, failed: [], usedProvider: false, historyDays: 0 }
 
-  // Finnhub primero (oficial); lo que no pueda cotizar lo cubre Yahoo, si está configurado.
-  // Los proveedores se piden a la vez (el tiempo es el del más lento, no la suma) y los
-  // cambios de divisa también. Si dos dan el mismo valor, gana el de más prioridad.
-  const providers: PriceProvider[] = []
-  if (apiKey) providers.push(createFinnhubProvider(apiKey, fetcher))
+  // Cada valor se pide primero a la fuente que le dio precio la última vez, y solo si esa no
+  // devuelve datos se prueba con la otra. Sin historial, Finnhub solo para valores de EE. UU.
+  // (su plan gratuito no cubre bolsas con sufijo: SAN.MC, SAP.DE…); el resto, Yahoo.
+  // Si Finnhub no responde, no se le vuelve a preguntar durante un rato.
+  const [sources, downUntil] = await Promise.all([
+    getMeta<Record<string, string>>(QUOTE_META.sources).then((v) => v ?? {}),
+    getMeta<string>(QUOTE_META.finnhubDownUntil),
+  ])
+  const finnhubDown = !!downUntil && downUntil > new Date().toISOString()
   const proxyUrl = proxy ? normalizeProxyUrl(proxy) : null
-  if (proxyUrl) providers.push(createYahooProvider(proxyUrl, fetcher))
+  const providers = new Map<string, PriceProvider>()
+  if (apiKey && !finnhubDown) providers.set('finnhub', createFinnhubProvider(apiKey, fetcher))
+  if (proxyUrl) providers.set('yahoo', createYahooProvider(proxyUrl, fetcher))
 
   const started = performance.now()
   const timings: RefreshTimings = { totalMs: 0 }
@@ -74,29 +80,81 @@ export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean
     }
   })()
 
-  const owner = new Map<string, number>() // activo → prioridad del proveedor que dio su precio
-  const results = await Promise.all(
-    providers.map(async (provider, i) => {
-      report.usedProvider = true
-      const t = performance.now()
-      const result = await provider.getQuotes(tracked.filter((a) => provider.supports(a)))
-      timings[provider.id === 'finnhub' ? 'finnhubMs' : 'yahooMs'] = since(t)
-      // Cada proveedor guarda lo suyo en cuanto termina, salvo lo que ya dio otro de más prioridad.
-      const mine = [...result.quotes.values()].filter((q) => (owner.get(q.assetId) ?? Infinity) > i)
-      for (const q of mine) owner.set(q.assetId, i)
-      await saveQuotes(mine)
-      await saveTodayPrices(mine)
-      return result
-    }),
-  )
-  report.updated = owner.size
+  const candidates = (a: Asset) => [...providers.values()].filter((p) => p.supports(a))
+  const primaryOf = (a: Asset): string | undefined => {
+    const c = candidates(a)
+    const remembered = sources[a.id]
+    if (remembered && c.some((p) => p.id === remembered)) return remembered
+    if (c.some((p) => p.id === 'finnhub') && !a.ticker?.includes('.')) return 'finnhub'
+    return (c.find((p) => p.id === 'yahoo') ?? c[0])?.id
+  }
 
-  // Si un valor falla en dos proveedores, se cuenta el último fallo, que es el más completo.
-  const errors = new Map<string, string>()
-  for (const result of results) for (const [id, message] of result.errors) errors.set(id, message)
-  for (const id of owner.keys()) errors.delete(id)
-  for (const [id, message] of errors) {
-    report.failed.push({ assetName: assets.find((a) => a.id === id)?.name ?? id, message })
+  const got = new Map<string, string>() // activo → proveedor que le dio precio
+  const lastError = new Map<string, string>()
+  const offlineWith = new Set<string>()
+  /** Pide a cada proveedor, a la vez, los activos que le tocan, y guarda lo que llega. */
+  async function wave(plan: Map<string, Asset[]>) {
+    await Promise.all(
+      [...plan].map(async ([id, list]) => {
+        const provider = providers.get(id)!
+        report.usedProvider = true
+        const t = performance.now()
+        const result = await provider.getQuotes(list)
+        timings[id === 'finnhub' ? 'finnhubMs' : 'yahooMs'] = (timings[id === 'finnhub' ? 'finnhubMs' : 'yahooMs'] ?? 0) + since(t)
+        const mine = [...result.quotes.values()]
+        for (const q of mine) got.set(q.assetId, id)
+        await saveQuotes(mine)
+        await saveTodayPrices(mine)
+        for (const [aid, message] of result.errors) {
+          lastError.set(aid, message)
+          if (/Sin conexión/.test(message)) offlineWith.add(`${aid}:${id}`)
+        }
+      }),
+    )
+  }
+  const group = (pairs: [string, Asset][]) => {
+    const plan = new Map<string, Asset[]>()
+    for (const [pid, a] of pairs) plan.set(pid, [...(plan.get(pid) ?? []), a])
+    return plan
+  }
+
+  const first = new Map<string, string>() // activo → proveedor de la primera ronda
+  const wave1: [string, Asset][] = []
+  for (const a of tracked) {
+    const pid = primaryOf(a)
+    if (pid) {
+      first.set(a.id, pid)
+      wave1.push([pid, a])
+    }
+  }
+  await wave(group(wave1))
+  // Lo que su fuente habitual no ha dado se pide a la otra.
+  const wave2: [string, Asset][] = []
+  for (const a of tracked) {
+    if (got.has(a.id) || !first.has(a.id)) continue
+    for (const p of candidates(a)) if (p.id !== first.get(a.id)) wave2.push([p.id, a])
+  }
+  await wave(group(wave2))
+  report.updated = got.size
+
+  // Recordar qué fuente funciona para cada valor, salvo que la habitual solo haya fallado por falta de red.
+  const next = { ...sources }
+  for (const [aid, pid] of got) {
+    if (!next[aid] || (next[aid] !== pid && !offlineWith.has(`${aid}:${next[aid]}`))) next[aid] = pid
+  }
+  await setMeta(QUOTE_META.sources, next)
+  // Si Finnhub no ha podido ni conectar con ninguno de sus valores, se le deja descansar un rato.
+  const finnhubTried = [...first].filter(([, pid]) => pid === 'finnhub').map(([aid]) => aid)
+  if (finnhubTried.length > 0 && finnhubTried.every((aid) => offlineWith.has(`${aid}:finnhub`))) {
+    await setMeta(QUOTE_META.finnhubDownUntil, new Date(Date.now() + FINNHUB_REST_MS).toISOString())
+  } else if (finnhubTried.some((aid) => got.get(aid) === 'finnhub')) {
+    await setMeta(QUOTE_META.finnhubDownUntil, '')
+  }
+
+  for (const a of tracked) {
+    if (got.has(a.id)) continue
+    const message = lastError.get(a.id)
+    if (message) report.failed.push({ assetName: a.name, message })
   }
 
   // Histórico de lo que falte (solo con Yahoo). Un fallo aquí no estropea la actualización.
@@ -178,6 +236,8 @@ function stripRecord<T extends { id: string; createdAt: string; updatedAt: strin
   return rest
 }
 
+/** Tras no poder conectar con Finnhub, cuánto se espera antes de volver a preguntarle. */
+const FINNHUB_REST_MS = 30 * 60_000
 const DAY_MS = 86_400_000
 const localDate = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 const daysBetween = (from: string, to: string) => Math.round((new Date(to + 'T12:00:00Z').getTime() - new Date(from + 'T12:00:00Z').getTime()) / DAY_MS)

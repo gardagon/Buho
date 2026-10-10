@@ -94,6 +94,10 @@ export const QUOTE_META = {
   historyState: 'quotes.historyState',
   /** Cuánto tardó la última actualización de precios y la última descarga de histórico (solo para diagnóstico). */
   lastRun: 'quotes.lastRun',
+  /** Por activo: el proveedor que le dio precio la última vez (`finnhub` o `yahoo`). */
+  sources: 'quotes.sources',
+  /** Si Finnhub no responde, hasta cuándo no se le pregunta (ISO). */
+  finnhubDownUntil: 'quotes.finnhubDownUntil',
   lastHistoryRun: 'quotes.lastHistoryRun',
 } as const
 
