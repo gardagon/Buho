@@ -699,6 +699,7 @@ main.slide-right { animation: enter-from-left 0.2s ease-out; }
 .lines dt { color: var(--ink-2); font-size: var(--step--1); min-width: 0; }
 .lines dd { margin: 0; font-size: var(--step--1); text-align: right; white-space: nowrap; }
 .lines > div:last-child dd { font-weight: 650; }
+.year-panel .block + .block, .asset-detail .block + .block { margin-top: 0; }
 .asset-detail .block { padding: 0; border: 0; background: none; }
 .group-head { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-left: 4px solid var(--tone-venta); border-radius: var(--r-sm); background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .block.dividendo .group-head { border-left-color: var(--tone-dividendo); }
