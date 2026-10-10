@@ -1,3 +1,4 @@
+import { timedFetch } from './http'
 import { Decimal } from '../domain/numbers'
 import type { Asset, AssetType, Quote } from '../domain/types'
 import type { Fetcher, PriceProvider, QuoteResult, SearchHit } from './types'
@@ -60,7 +61,7 @@ export function finnhubError(status: number): string {
  * BME, Xetra y similares exigen plan de pago (ver docs/DECISIONES.md).
  * El ticker se envía tal cual lo escribió la persona (`AAPL`, `SAN.MC`…).
  */
-export function createFinnhubProvider(apiKey: string, fetcher: Fetcher = (...a) => fetch(...a)): PriceProvider {
+export function createFinnhubProvider(apiKey: string, fetcher: Fetcher = timedFetch): PriceProvider {
   async function one(asset: Asset): Promise<Quote> {
     const url = `${BASE}/quote?symbol=${encodeURIComponent(asset.ticker!)}&token=${encodeURIComponent(apiKey)}`
     const res = await fetcher(url)

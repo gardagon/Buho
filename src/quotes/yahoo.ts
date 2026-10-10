@@ -1,3 +1,4 @@
+import { timedFetch } from './http'
 import { Decimal } from '../domain/numbers'
 import type { Asset, AssetType, Quote, QuoteDay } from '../domain/types'
 import { guessCurrency } from './finnhub'
@@ -61,7 +62,7 @@ export function normalizeProxyUrl(raw: string): string | null {
 
 const isOffline = (e: unknown) => e instanceof TypeError || (e instanceof Error && e.message === 'Failed to fetch')
 
-export function createYahooProvider(proxyUrl: string, fetcher: Fetcher = (...a) => fetch(...a)): PriceProvider {
+export function createYahooProvider(proxyUrl: string, fetcher: Fetcher = timedFetch): PriceProvider {
   const base = proxyUrl.replace(/\/+$/, '')
 
   return {
@@ -178,7 +179,7 @@ export function createYahooProvider(proxyUrl: string, fetcher: Fetcher = (...a) 
  */
 export async function testYahooProxy(
   proxyUrl: string,
-  fetcher: Fetcher = (...a) => fetch(...a),
+  fetcher: Fetcher = timedFetch,
 ): Promise<{ ok: boolean; message: string; outdated?: boolean }> {
   const url = normalizeProxyUrl(proxyUrl)
   if (!url) return { ok: false, message: 'La dirección debe empezar por https:// (p. ej. https://buho-yahoo.tu-usuario.workers.dev).' }

@@ -1,3 +1,4 @@
+import { timedFetch } from './http'
 import type { FxRates } from '../domain/types'
 import type { Fetcher } from './types'
 
@@ -7,7 +8,7 @@ const BASE = 'https://api.frankfurter.dev/v1'
  * Tipos de cambio actuales del BCE vía Frankfurter (gratis y sin clave).
  * Devuelve unidades de cada divisa por 1 EUR, como en `Movement.fxRate`.
  */
-export async function fetchFxRates(currencies: string[], fetcher: Fetcher = (...a) => fetch(...a)): Promise<FxRates> {
+export async function fetchFxRates(currencies: string[], fetcher: Fetcher = timedFetch): Promise<FxRates> {
   const wanted = [...new Set(currencies.filter((c) => c !== 'EUR'))]
   if (wanted.length === 0) return { date: new Date().toISOString().slice(0, 10), rates: {} }
   const res = await fetcher(`${BASE}/latest?base=EUR&symbols=${wanted.join(',')}`)
@@ -27,7 +28,7 @@ export async function fetchFxRates(currencies: string[], fetcher: Fetcher = (...
 export async function fetchRateOn(
   currency: string,
   date: string,
-  fetcher: Fetcher = (...a) => fetch(...a),
+  fetcher: Fetcher = timedFetch,
 ): Promise<{ rate: string; date: string }> {
   const res = await fetcher(`${BASE}/${date}?base=EUR&symbols=${currency}`)
   if (!res.ok) throw new Error(`No se pudo pedir el cambio del ${date} (error ${res.status}).`)
