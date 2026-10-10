@@ -27,7 +27,7 @@ jobs:
       - run: npm run build
         env:
           # Variable del repositorio (Settings → Secrets and variables → Actions → Variables)
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
       - uses: actions/upload-pages-artifact@v5
         if: github.ref == 'refs/heads/main'
         with:
