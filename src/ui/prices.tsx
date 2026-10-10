@@ -27,11 +27,12 @@ export function priceStamp(p: PriceInfo): string {
 
 /** Última actualización y botón para pedir cotizaciones y tipos de cambio. */
 export function RefreshLine() {
-  const { refresh, refreshing, refreshedAt } = useQuotes()
+  const { refresh, refreshing, refreshedAt, historyBusy } = useQuotes()
   return (
     <div className="refresh-line">
       <p className="small muted">
         {refreshedAt ? `Actualizado el ${dateTime.format(new Date(refreshedAt))}` : 'Sin actualizar todavía'}
+        {historyBusy && ' · Bajando el histórico en segundo plano'}
       </p>
       <button className="btn small" onClick={() => void refresh()} disabled={refreshing}>
         {refreshing ? 'Actualizando…' : 'Actualizar precios'}

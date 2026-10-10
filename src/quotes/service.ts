@@ -1,7 +1,7 @@
 import { db, getMeta, setMeta } from '../data/db'
 import { QUOTE_META, saveAsset, saveFxRates, saveQuoteDays, saveQuotes } from '../data/repo'
 import { computePortfolio } from '../domain/portfolio'
-import type { Asset, FxRates, Movement, Quote } from '../domain/types'
+import type { Asset, FxRates, Movement, Quote, QuoteDay } from '../domain/types'
 import { fetchFxRates } from './fx'
 import { createFinnhubProvider } from './finnhub'
 import type { Fetcher, HistoryRange, PriceProvider, SearchHit } from './types'
@@ -24,7 +24,7 @@ export interface RefreshReport {
  * los marcados para seguimiento. Sin clave de proveedor solo se actualizan los
  * tipos de cambio: los precios manuales siguen valiendo.
  */
-export async function refreshQuotes(fetcher?: Fetcher): Promise<RefreshReport> {
+export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean } = {}): Promise<RefreshReport> {
   const [allAssets, movements, apiKey, proxy] = await Promise.all([
     db.assets.toArray(),
     db.movements.toArray(),
@@ -48,6 +48,7 @@ export async function refreshQuotes(fetcher?: Fetcher): Promise<RefreshReport> {
     const result = await provider.getQuotes(pending.filter((a) => provider.supports(a)))
     report.usedProvider = true
     await saveQuotes([...result.quotes.values()])
+    await saveTodayPrices([...result.quotes.values()])
     report.updated += result.quotes.size
     for (const id of result.quotes.keys()) errors.delete(id)
     // Si un valor falla en dos proveedores, se cuenta el último fallo, que es el más completo.
@@ -59,7 +60,8 @@ export async function refreshQuotes(fetcher?: Fetcher): Promise<RefreshReport> {
   }
 
   // Histórico de lo que falte (solo con Yahoo). Un fallo aquí no estropea la actualización.
-  if (proxyUrl) {
+  // La app lo pide aparte (`opts.history: false`) para no hacer esperar a las cotizaciones.
+  if (proxyUrl && opts.history !== false) {
     try {
       const h = await refreshHistory(createYahooProvider(proxyUrl, fetcher), tracked, movements.filter((m) => !m.deleted))
       report.historyDays = h.days
@@ -159,10 +161,43 @@ export function rangeForDays(days: number): HistoryRange {
 }
 
 /**
- * Descarga el histórico diario de lo que se sigue y falte: 5 años (o desde la
- * primera compra, si es más antigua) la primera vez, y después solo los días que
- * faltan. Se intenta una vez al día por activo, para no insistir con tickers que
- * Yahoo no conoce.
+ * Guarda el precio de hoy en el histórico de cada valor, sin pedir nada más: así
+ * el histórico se va completando con cada actualización. Es el último precio
+ * visto; si luego se baja el histórico, el cierre real lo sustituye (conservando
+ * máximo y mínimo). Fines de semana no se anota: el mercado no abre.
+ */
+export async function saveTodayPrices(quotes: Quote[]) {
+  const days: QuoteDay[] = []
+  for (const q of quotes) {
+    const date = localDate(new Date(q.at))
+    const dow = new Date(date + 'T12:00:00Z').getUTCDay()
+    if (dow === 0 || dow === 6) continue
+    const prev = await db.quoteDays.get([q.assetId, date])
+    days.push({ assetId: q.assetId, date, price: q.price, currency: q.currency, high: prev?.high, low: prev?.low })
+  }
+  if (days.length > 0) await saveQuoteDays(days)
+}
+
+interface HistoryState {
+  /** Fecha más antigua que se pidió en la descarga completa. */
+  from: string
+  /** Último día que devolvió un histórico descargado. */
+  upTo: string
+}
+
+const FIVE_YEARS = 1825
+/** Días sin histórico descargado a partir de los cuales se pide un tramo corto para tapar el hueco. */
+const GAP_DAYS = 4
+/** Valores cuyo histórico se piden a la vez. */
+const HISTORY_PARALLEL = 3
+
+/**
+ * Descarga el histórico diario de lo que se sigue. La descarga completa (5 años,
+ * o desde la primera compra si es más antigua) se hace UNA sola vez por valor y
+ * queda anotada, aunque Yahoo devuelva menos años (un valor joven). Después el
+ * histórico se completa con el precio de cada actualización y, si la app lleva
+ * varios días sin abrirse, con un tramo corto. Se intenta una vez al día por
+ * activo, para no insistir con tickers que Yahoo no conoce.
  */
 export async function refreshHistory(
   provider: PriceProvider,
@@ -173,30 +208,34 @@ export async function refreshHistory(
   const out = { days: 0, errors: [] as { assetName: string; message: string }[] }
   if (!provider.history) return out
   const tried = (await getMeta<Record<string, string>>(QUOTE_META.historyTried)) ?? {}
-  const FIVE_YEARS = 1825
+  const state = (await getMeta<Record<string, HistoryState>>(QUOTE_META.historyState)) ?? {}
 
-  for (const asset of tracked.filter((a) => a.ticker)) {
-    if (tried[asset.id] === today) continue
-    const stored = await db.quoteDays.where('assetId').equals(asset.id).sortBy('date')
+  async function one(asset: Asset) {
+    if (tried[asset.id] === today) return
     const firstMovement = movements.filter((m) => m.assetId === asset.id).map((m) => m.date).sort()[0]
     // Desde cuándo hace falta tener datos: 5 años, o la primera compra si es anterior.
     const needFrom = firstMovement && daysBetween(firstMovement, today) > FIVE_YEARS ? firstMovement : localDate(new Date(Date.now() - FIVE_YEARS * DAY_MS))
-    const first = stored[0]?.date
-    const last = stored[stored.length - 1]?.date
+    let st = state[asset.id]
+    if (!st) {
+      // Datos de versiones anteriores: si ya hay mucho guardado, no se vuelve a bajar todo.
+      const stored = await db.quoteDays.where('assetId').equals(asset.id).sortBy('date')
+      if (stored.length >= 200) st = state[asset.id] = { from: needFrom, upTo: stored[stored.length - 1].date }
+    }
 
     let range: HistoryRange | null = null
-    if (stored.length < 30 || (first && daysBetween(needFrom, first) > 15)) {
-      range = rangeForDays(daysBetween(needFrom, today))
-    } else if (last && daysBetween(last, today) > 2) {
-      range = rangeForDays(daysBetween(last, today) + 5)
-    }
-    if (!range) continue
+    // Completa solo la primera vez, o si ahora hace falta algo más antiguo (una compra antigua añadida después).
+    if (!st || daysBetween(needFrom, st.from) > 30) range = rangeForDays(daysBetween(needFrom, today))
+    else if (daysBetween(st.upTo, today) > GAP_DAYS) range = rangeForDays(daysBetween(st.upTo, today) + 5)
+    if (!range) return
 
     try {
-      const days = await provider.history(asset, range)
+      const days = await provider.history!(asset, range)
       await saveQuoteDays(days)
       out.days += days.length
       tried[asset.id] = today
+      const upTo = days.map((d) => d.date).sort().pop() ?? st?.upTo ?? today
+      const full = !st || range === rangeForDays(daysBetween(needFrom, today))
+      state[asset.id] = { from: full ? needFrom : st!.from, upTo }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Error'
       out.errors.push({ assetName: asset.name, message })
@@ -204,6 +243,27 @@ export async function refreshHistory(
       if (!/Sin conexión/.test(message)) tried[asset.id] = today
     }
   }
+
+  // Unos pocos a la vez: un valor lento no retrasa a los demás.
+  const queue = tracked.filter((a) => a.ticker)
+  await Promise.all(
+    Array.from({ length: Math.min(HISTORY_PARALLEL, queue.length) }, async () => {
+      for (let a = queue.shift(); a; a = queue.shift()) await one(a)
+    }),
+  )
   await setMeta(QUOTE_META.historyTried, tried)
+  await setMeta(QUOTE_META.historyState, state)
   return out
+}
+
+/** Pide el histórico que falte de lo que se sigue, sin esperar a una actualización de precios. */
+export async function refreshHistoryNow(fetcher?: Fetcher) {
+  const proxy = await getMeta<string>(QUOTE_META.yahooProxy)
+  const proxyUrl = proxy ? normalizeProxyUrl(proxy) : null
+  if (!proxyUrl) return { days: 0, errors: [] as { assetName: string; message: string }[] }
+  const [allAssets, movements] = await Promise.all([db.assets.toArray(), db.movements.toArray()])
+  const assets = allAssets.filter((a) => !a.deleted)
+  const live = movements.filter((m) => !m.deleted)
+  const held = new Set(computePortfolio(assets, live).positions.map((p) => p.asset.id))
+  return refreshHistory(createYahooProvider(proxyUrl, fetcher), assets.filter((a) => held.has(a.id) || a.watched), live)
 }

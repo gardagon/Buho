@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db, setMeta } from '../data/db'
 import { QUOTE_META, saveAsset, saveMovement, wipeLocalData } from '../data/repo'
 import type { Asset } from '../domain/types'
-import { rangeForDays, refreshHistory, refreshQuotes, searchSecurities } from './service'
+import { rangeForDays, refreshHistory, refreshQuotes, saveTodayPrices, searchSecurities } from './service'
 import { createYahooProvider, mapYahooType, normalizeCurrency, normalizeProxyUrl, testYahooProxy } from './yahoo'
 
 const PROXY = 'https://buho-yahoo.ejemplo.workers.dev'
@@ -206,6 +206,7 @@ describe('histórico de Yahoo', () => {
       assetId: id, date: new Date(Date.UTC(2021, 9, 10 + i)).toISOString().slice(0, 10), price: '1', currency: 'GBP',
     }))
     await db.quoteDays.clear()
+    await setMeta(QUOTE_META.historyState, {}) // como una copia anterior, sin anotación: se deduce de lo guardado
     await db.quoteDays.bulkPut(old) // llega hasta 2025-04-30 aprox.
     const lastStored = old[old.length - 1].date
     await refreshHistory(provider, [a], [], '2026-10-10')
@@ -251,8 +252,36 @@ describe('histórico de Yahoo', () => {
     const noHistory = async (url: RequestInfo | URL) => (String(url).includes('/history') ? json({}, 404) : ok(url))
     await db.quoteDays.clear()
     await setMeta(QUOTE_META.historyTried, {})
+    await setMeta(QUOTE_META.historyState, {})
     const r2 = await refreshQuotes(noHistory)
     expect(r2.updated).toBe(1)
     expect(r2.failed[0].message).toMatch(/^Histórico:/)
+  })
+
+  it('la descarga completa se hace una sola vez, aunque Yahoo devuelva menos de 5 años', async () => {
+    const id = await saveAsset({ name: 'Joven', type: 'accion', currency: 'EUR', ticker: 'JOVEN.MC', watched: true })
+    const a = (await db.assets.get(id))!
+    const ranges: string[] = []
+    const young = createYahooProvider(PROXY, async (url: RequestInfo | URL) => {
+      ranges.push(new URL(String(url)).searchParams.get('range') ?? '')
+      return json({ currency: 'EUR', days: [{ date: '2026-10-08', close: 4.5 }] })
+    })
+    await refreshHistory(young, [a], [], '2026-10-09')
+    await refreshHistory(young, [a], [], '2026-10-10')
+    await refreshHistory(young, [a], [], '2026-10-12')
+    expect(ranges).toEqual(['5y'])
+    // Tras varios días sin abrir la app, solo se pide un tramo corto.
+    await refreshHistory(young, [a], [], '2026-10-20')
+    expect(ranges).toEqual(['5y', '1mo'])
+  })
+
+  it('el precio de cada actualización completa el histórico sin pedir nada, salvo fines de semana', async () => {
+    const id = await saveAsset({ name: 'Santander', type: 'accion', currency: 'EUR', ticker: 'SAN.MC', watched: true })
+    await db.quoteDays.put({ assetId: id, date: '2026-10-08', price: '4.40', currency: 'EUR', high: '4.60', low: '4.30' })
+    const q = (at: string, price: string) => ({ assetId: id, price, currency: 'EUR', at, provider: 'yahoo' })
+    // 8 oct (jueves, con máximo y mínimo ya guardados), 10 oct (sábado)
+    await saveTodayPrices([q('2026-10-08T10:00:00', '4.52'), q('2026-10-10T10:00:00', '4.55')])
+    const days = await db.quoteDays.where('assetId').equals(id).toArray()
+    expect(days.map((d) => [d.date, d.price, d.high])).toEqual([['2026-10-08', '4.52', '4.60']])
   })
 })

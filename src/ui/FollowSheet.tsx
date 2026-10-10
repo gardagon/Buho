@@ -23,7 +23,7 @@ type State =
 
 export function FollowSheet({ assets, onClose, onManual }: Props) {
   const toast = useToast()
-  const { hasKey, hasYahoo, quotes } = useQuotes()
+  const { hasKey, hasYahoo, quotes, loadHistory } = useQuotes()
   const canSearch = hasKey || hasYahoo
   const [query, setQuery] = useState('')
   const [state, setState] = useState<State>({ status: 'idle' })
@@ -65,12 +65,14 @@ export function FollowSheet({ assets, onClose, onManual }: Props) {
   async function followExisting(a: Asset) {
     const { id: _i, createdAt: _c, updatedAt: _u, deleted: _d, ...rest } = a
     await saveAsset({ ...rest, watched: true }, a.id)
+    void loadHistory()
     toast(`Sigues ${a.name}`)
     onClose()
   }
 
   async function follow(r: SearchResult) {
     await followSecurity(r)
+    void loadHistory()
     toast(`Sigues ${r.hit.name}`)
     onClose()
   }

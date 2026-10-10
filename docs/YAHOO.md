@@ -30,7 +30,7 @@ Si Buho añade funciones al proxy, «Probar» avisa de que tu versión es antigu
 - Con la dirección guardada, **«Seguir un valor»** busca en Yahoo (más mercados, y da la divisa real de cada valor).
 - Al actualizar precios, Buho pide primero a Finnhub (si tienes clave) y lo que este no puede cotizar lo pide a Yahoo. Sin clave de Finnhub, todo va por Yahoo.
 - Pon el ticker **de Yahoo** en cada activo: `SAN.MC` (Madrid), `SAP.DE` (Xetra), `AIR.PA` (París), `ASML.AS` (Ámsterdam), `ENI.MI` (Milán), `VOD.L` (Londres), `NESN.SW` (Suiza). El buscador te da el símbolo exacto.
-- **Histórico:** al actualizar, Buho descarga el histórico diario (hasta 5 años, o desde tu primera compra) de lo que sigues. Sirve para calcular cómo ha ido cada valor a 1 semana, 1 mes, 1 año, 2 y 5 años, y para avisarte si el precio de una compra o venta no cuadra con lo que cotizó ese día. Es una vez al día por valor.
+- **Histórico:** al actualizar, Buho descarga el histórico diario (hasta 5 años, o desde tu primera compra) de lo que sigues. Sirve para calcular cómo ha ido cada valor a 1 semana, 1 mes, 1 año, 2 y 5 años, y para avisarte si el precio de una compra o venta no cuadra con lo que cotizó ese día. La descarga completa se hace una sola vez por valor; después se completa con el precio de cada actualización. Va en segundo plano: los precios aparecen sin esperar a que termine.
 - Ojo con los valores que cotizan en varias bolsas: `BBVA` es el ADR de EE. UU. (en dólares) y `BBVA.MC` es el de Madrid (en euros).
 
 ## Límites y riesgos

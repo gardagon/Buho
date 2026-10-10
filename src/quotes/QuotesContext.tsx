@@ -6,12 +6,16 @@ import type { FxRates, Quote } from '../domain/types'
 import type { BaseCurrency } from '../domain/valuation'
 import { useToast } from '../ui/Toast'
 import { missingRates } from './fx'
-import { refreshQuotes, type RefreshReport } from './service'
+import { refreshHistoryNow, refreshQuotes, type RefreshReport } from './service'
 
 interface QuotesState {
   quotes: ReadonlyMap<string, Quote>
   fx?: FxRates
   refreshing: boolean
+  /** Se está bajando el histórico de precios en segundo plano. */
+  historyBusy: boolean
+  /** Baja el histórico que falte (p. ej. al seguir un valor nuevo), sin bloquear nada. */
+  loadHistory: () => Promise<void>
   /** Último intento de actualizar (ISO). */
   refreshedAt?: string
   hasKey: boolean
@@ -42,6 +46,8 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false)
   const [lastReport, setLastReport] = useState<RefreshReport>()
   const running = useRef(false)
+  const [historyBusy, setHistoryBusy] = useState(false)
+  const historyRunning = useRef(false)
 
   const list = useLiveQuery(() => db.quotes.toArray())
   // El envoltorio distingue «aún cargando» (undefined) de «no hay cambios guardados».
@@ -56,13 +62,27 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
 
   const quotes = useMemo(() => (list ? new Map(list.map((q) => [q.assetId, q])) : EMPTY), [list])
 
+  const loadHistory = useCallback(async () => {
+    if (historyRunning.current || !navigator.onLine) return
+    historyRunning.current = true
+    setHistoryBusy(true)
+    try {
+      await refreshHistoryNow()
+    } catch {
+      /* se reintenta en la siguiente actualización */
+    } finally {
+      historyRunning.current = false
+      setHistoryBusy(false)
+    }
+  }, [])
+
   const refresh = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
       if (running.current) return undefined
       running.current = true
       setRefreshing(true)
       try {
-        const report = await refreshQuotes()
+        const report = await refreshQuotes(undefined, { history: false })
         setLastReport(report)
         if (!silent) toast(summarizeReport(report))
         return report
@@ -72,9 +92,11 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
       } finally {
         running.current = false
         setRefreshing(false)
+        // El histórico va después y aparte: los precios ya se ven y la app no espera.
+        void loadHistory()
       }
     },
-    [toast],
+    [toast, loadHistory],
   )
 
   // Al abrir la app, actualiza en silencio si hace rato que no se hacía.
@@ -98,8 +120,8 @@ export function QuotesProvider({ children }: { children: ReactNode }) {
   }, [fxEntry, fx, assetList, refresh])
 
   const value = useMemo(
-    () => ({ quotes, fx, refreshing, refreshedAt, hasKey, hasYahoo, baseCurrency, lastReport, refresh }),
-    [quotes, fx, refreshing, refreshedAt, hasKey, hasYahoo, baseCurrency, lastReport, refresh],
+    () => ({ quotes, fx, refreshing, historyBusy, loadHistory, refreshedAt, hasKey, hasYahoo, baseCurrency, lastReport, refresh }),
+    [quotes, fx, refreshing, historyBusy, loadHistory, refreshedAt, hasKey, hasYahoo, baseCurrency, lastReport, refresh],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

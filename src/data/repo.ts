@@ -90,6 +90,8 @@ export const QUOTE_META = {
   baseCurrency: 'ui.baseCurrency',
   /** Qué día se intentó por última vez descargar el histórico de cada activo (para no insistir). */
   historyTried: 'quotes.historyTried',
+  /** Por activo: desde cuándo se pidió el histórico completo y hasta qué día llega lo descargado. */
+  historyState: 'quotes.historyState',
 } as const
 
 export async function saveQuotes(quotes: Quote[]) {
