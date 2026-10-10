@@ -7,6 +7,7 @@ import { parseSnapshot } from '../../data/merge'
 import { exportSnapshot, mergeIntoLocal, wipeLocalData } from '../../data/repo'
 import { META } from '../../sync/sync'
 import { useSync } from '../../sync/SyncContext'
+import { Guide, type GuideId } from '../Guides'
 import { useToast } from '../Toast'
 
 const timeFmt = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
@@ -20,6 +21,8 @@ export function Ajustes() {
   const [finnhubKey, setFinnhubKey] = useState('')
   const [yahooProxy, setYahooProxy] = useState('')
   const [testing, setTesting] = useState(false)
+  const [guide, setGuide] = useState<GuideId | null>(null)
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; outdated?: boolean } | null>(null)
   const envClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
   useEffect(() => {
@@ -56,8 +59,9 @@ export function Ajustes() {
 
   async function checkYahooProxy() {
     setTesting(true)
+    setTestResult(null)
     try {
-      toast((await testYahooProxy(yahooProxy)).message)
+      setTestResult(await testYahooProxy(yahooProxy))
     } finally {
       setTesting(false)
     }
@@ -206,11 +210,20 @@ export function Ajustes() {
         <h2 id="quotes-h">Cotizaciones</h2>
         <p>
           Buho pide los precios a Finnhub con tu propia clave gratuita, y los tipos de cambio al BCE (sin clave). La clave
-          se guarda solo en este dispositivo y no se sube a Drive. Consíguela en finnhub.io, en «API Key».
+          se guarda solo en este dispositivo y no se sube a Drive.
         </p>
         <p>
-          El plan gratuito de Finnhub solo cubre valores de EE. UU. Para BME, Xetra, fondos y bonos, escribe un precio
-          manual en cada activo.
+          El plan gratuito de Finnhub solo cubre valores de EE. UU. Para BME, Xetra, fondos y bonos, usa Yahoo (más abajo) o
+          escribe un precio manual en cada activo.
+        </p>
+        <p className="small">
+          <button type="button" className="link-btn" onClick={() => setGuide('finnhub')}>
+            Guía: cómo conseguir la clave de Finnhub
+          </button>
+          {' · '}
+          <button type="button" className="link-btn" onClick={() => setGuide('yahoo')}>
+            Guía: cómo montar el proxy de Yahoo
+          </button>
         </p>
         <label className="field">
           <span>Clave de Finnhub</span>
@@ -221,6 +234,12 @@ export function Ajustes() {
             autoComplete="off"
             spellCheck={false}
           />
+          <small>
+            ¿No tienes clave?{' '}
+            <button type="button" className="link-btn" onClick={() => setGuide('finnhub')}>
+              Mira cómo conseguirla
+            </button>
+          </small>
         </label>
         <div className="actions">
           <button className="btn" onClick={saveFinnhubKey}>
@@ -235,8 +254,11 @@ export function Ajustes() {
           <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
             <p className="small muted">
               Yahoo no deja que una web lo consulte directamente, así que hace falta un pequeño proxy tuyo y gratuito en
-              Cloudflare. Los pasos están en <strong>docs/YAHOO.md</strong> del proyecto. El proxy solo ve los tickers que
-              consultas, nunca tus movimientos. Se usa para lo que Finnhub no cubre, y también para buscar valores.
+              Cloudflare. El proxy solo ve los tickers que consultas, nunca tus movimientos. Se usa para lo que Finnhub no
+              cubre, para buscar valores y para descargar el histórico de precios.{' '}
+              <button type="button" className="link-btn" onClick={() => setGuide('yahoo')}>
+                Ver la guía paso a paso
+              </button>
             </p>
             <label className="field">
               <span>Dirección del proxy</span>
@@ -257,6 +279,16 @@ export function Ajustes() {
                 {testing ? 'Probando…' : 'Probar'}
               </button>
             </div>
+            {testResult && (
+              <p className={testResult.ok && !testResult.outdated ? 'small gain' : 'small error-text'} role="status">
+                {testResult.message}{' '}
+                {(!testResult.ok || testResult.outdated) && (
+                  <button type="button" className="link-btn" onClick={() => setGuide('yahoo')}>
+                    Ver la guía
+                  </button>
+                )}
+              </p>
+            )}
           </div>
         </details>
         {quotes.lastReport && (quotes.lastReport.failed.length > 0 || quotes.lastReport.fxError) && (
@@ -267,6 +299,16 @@ export function Ajustes() {
               </li>
             ))}
             {quotes.lastReport.fxError && <li>{quotes.lastReport.fxError}</li>}
+            <li className="small">
+              ¿Problemas?{' '}
+              <button type="button" className="link-btn" onClick={() => setGuide('finnhub')}>
+                Guía de Finnhub
+              </button>
+              {' · '}
+              <button type="button" className="link-btn" onClick={() => setGuide('yahoo')}>
+                Guía de Yahoo
+              </button>
+            </li>
           </ul>
         )}
       </section>
@@ -307,6 +349,8 @@ export function Ajustes() {
           </button>
         </div>
       </section>
+
+      {guide && <Guide id={guide} onClose={() => setGuide(null)} />}
 
       <p className="small muted" style={{ marginTop: 24 }}>
         Buho {__APP_VERSION__}. Sin servidores: tus datos solo están en tus dispositivos y en tu Google Drive.

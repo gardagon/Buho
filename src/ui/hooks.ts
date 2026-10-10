@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo } from 'react'
 import { db } from '../data/db'
+import { checkTradePrice, type PriceCheck } from '../domain/checks'
 import { computePortfolio } from '../domain/portfolio'
 import type { Asset, Movement } from '../domain/types'
 
@@ -34,4 +35,25 @@ export function usePortfolio() {
 
 export function useLoaded(): boolean {
   return useLiveQuery(async () => true) ?? false
+}
+
+const NO_CHECKS = new Map<string, PriceCheck>()
+
+/**
+ * Movimientos de compra o venta cuyo precio no cuadra con lo que cotizó ese día
+ * (según el histórico descargado). Solo devuelve los que hay que revisar.
+ */
+export function useTradeChecks(movements: Movement[]): Map<string, PriceCheck> {
+  return (
+    useLiveQuery(async () => {
+      const trades = movements.filter((m) => (m.type === 'compra' || m.type === 'venta') && m.price)
+      const days = await db.quoteDays.bulkGet(trades.map((m) => [m.assetId, m.date] as [string, string]))
+      const out = new Map<string, PriceCheck>()
+      trades.forEach((m, i) => {
+        const c = checkTradePrice(m, days[i])
+        if (c.status === 'fuera') out.set(m.id, c)
+      })
+      return out
+    }, [movements]) ?? NO_CHECKS
+  )
 }

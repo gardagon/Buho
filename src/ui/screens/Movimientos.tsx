@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { d, formatMoney, formatQuantity } from '../../domain/numbers'
 import { toEur } from '../../domain/portfolio'
 import { MOVEMENT_TYPES, type Asset, type Movement } from '../../domain/types'
+import { useTradeChecks } from '../hooks'
 
 interface Props {
   movements: Movement[]
@@ -23,6 +24,7 @@ function netAmount(m: Movement) {
 }
 
 export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter }: Props) {
+  const checks = useTradeChecks(movements)
   const assetById = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets])
 
   const groups = useMemo(() => {
@@ -68,6 +70,7 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
               {ms.map((m) => {
                 const a = assetById.get(m.assetId)
                 const net = netAmount(m)
+                const check = checks.get(m.id)
                 // Con el total real en EUR, el importe ya está en euros.
                 const netCurrency = m.totalEur && (m.type === 'compra' || m.type === 'venta') ? 'EUR' : m.currency
                 return (
@@ -88,6 +91,12 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
                       <span className="row-sub row-end num">
                         {netCurrency !== 'EUR' ? formatMoney(toEur(net.abs(), m.fxRate)) : (m.account ?? '')}
                       </span>
+                      {check && (
+                        <span className="row-sub row-note loss num">
+                          Revisa el precio: ese día cotizó entre {formatMoney(check.low!, check.currency)} y{' '}
+                          {formatMoney(check.high!, check.currency)}.
+                        </span>
+                      )}
                     </button>
                   </li>
                 )

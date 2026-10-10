@@ -1,10 +1,10 @@
 import { db, getMeta, setMeta } from '../data/db'
-import { QUOTE_META, saveAsset, saveFxRates, saveQuotes } from '../data/repo'
+import { QUOTE_META, saveAsset, saveFxRates, saveQuoteDays, saveQuotes } from '../data/repo'
 import { computePortfolio } from '../domain/portfolio'
-import type { FxRates, Quote } from '../domain/types'
+import type { Asset, FxRates, Movement, Quote } from '../domain/types'
 import { fetchFxRates } from './fx'
 import { createFinnhubProvider } from './finnhub'
-import type { Fetcher, PriceProvider, SearchHit } from './types'
+import type { Fetcher, HistoryRange, PriceProvider, SearchHit } from './types'
 import { createYahooProvider, normalizeProxyUrl } from './yahoo'
 
 export interface RefreshReport {
@@ -15,6 +15,8 @@ export interface RefreshReport {
   /** Hay clave de proveedor guardada. */
   usedProvider: boolean
   fxError?: string
+  /** Días de histórico descargados en esta actualización. */
+  historyDays: number
 }
 
 /**
@@ -32,7 +34,7 @@ export async function refreshQuotes(fetcher?: Fetcher): Promise<RefreshReport> {
   const assets = allAssets.filter((a) => !a.deleted)
   const held = new Set(computePortfolio(assets, movements.filter((m) => !m.deleted)).positions.map((p) => p.asset.id))
   const tracked = assets.filter((a) => held.has(a.id) || a.watched)
-  const report: RefreshReport = { updated: 0, failed: [], usedProvider: false }
+  const report: RefreshReport = { updated: 0, failed: [], usedProvider: false, historyDays: 0 }
 
   // Finnhub primero (oficial); lo que no pueda cotizar pasa a Yahoo, si está configurado.
   const providers: PriceProvider[] = []
@@ -54,6 +56,17 @@ export async function refreshQuotes(fetcher?: Fetcher): Promise<RefreshReport> {
   }
   for (const [id, message] of errors) {
     report.failed.push({ assetName: assets.find((a) => a.id === id)?.name ?? id, message })
+  }
+
+  // Histórico de lo que falte (solo con Yahoo). Un fallo aquí no estropea la actualización.
+  if (proxyUrl) {
+    try {
+      const h = await refreshHistory(createYahooProvider(proxyUrl, fetcher), tracked, movements.filter((m) => !m.deleted))
+      report.historyDays = h.days
+      for (const e of h.errors) report.failed.push({ assetName: e.assetName, message: `Histórico: ${e.message}` })
+    } catch {
+      /* se reintenta en la siguiente actualización */
+    }
   }
 
   // Divisas de lo que se sigue y de lo que puede traer una cotización.
@@ -127,4 +140,70 @@ export async function followSecurity({ hit, quote }: SearchResult): Promise<stri
 function stripRecord<T extends { id: string; createdAt: string; updatedAt: string; deleted?: boolean }>(a: T) {
   const { id: _id, createdAt: _c, updatedAt: _u, deleted: _d, ...rest } = a
   return rest
+}
+
+const DAY_MS = 86_400_000
+const localDate = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+const daysBetween = (from: string, to: string) => Math.round((new Date(to + 'T12:00:00Z').getTime() - new Date(from + 'T12:00:00Z').getTime()) / DAY_MS)
+
+/** El periodo más corto de Yahoo que cubre esos días. */
+export function rangeForDays(days: number): HistoryRange {
+  if (days <= 31) return '1mo'
+  if (days <= 92) return '3mo'
+  if (days <= 183) return '6mo'
+  if (days <= 366) return '1y'
+  if (days <= 731) return '2y'
+  if (days <= 1830) return '5y'
+  if (days <= 3660) return '10y'
+  return 'max'
+}
+
+/**
+ * Descarga el histórico diario de lo que se sigue y falte: 5 años (o desde la
+ * primera compra, si es más antigua) la primera vez, y después solo los días que
+ * faltan. Se intenta una vez al día por activo, para no insistir con tickers que
+ * Yahoo no conoce.
+ */
+export async function refreshHistory(
+  provider: PriceProvider,
+  tracked: Asset[],
+  movements: Movement[],
+  today = localDate(),
+): Promise<{ days: number; errors: { assetName: string; message: string }[] }> {
+  const out = { days: 0, errors: [] as { assetName: string; message: string }[] }
+  if (!provider.history) return out
+  const tried = (await getMeta<Record<string, string>>(QUOTE_META.historyTried)) ?? {}
+  const FIVE_YEARS = 1825
+
+  for (const asset of tracked.filter((a) => a.ticker)) {
+    if (tried[asset.id] === today) continue
+    const stored = await db.quoteDays.where('assetId').equals(asset.id).sortBy('date')
+    const firstMovement = movements.filter((m) => m.assetId === asset.id).map((m) => m.date).sort()[0]
+    // Desde cuándo hace falta tener datos: 5 años, o la primera compra si es anterior.
+    const needFrom = firstMovement && daysBetween(firstMovement, today) > FIVE_YEARS ? firstMovement : localDate(new Date(Date.now() - FIVE_YEARS * DAY_MS))
+    const first = stored[0]?.date
+    const last = stored[stored.length - 1]?.date
+
+    let range: HistoryRange | null = null
+    if (stored.length < 30 || (first && daysBetween(needFrom, first) > 15)) {
+      range = rangeForDays(daysBetween(needFrom, today))
+    } else if (last && daysBetween(last, today) > 2) {
+      range = rangeForDays(daysBetween(last, today) + 5)
+    }
+    if (!range) continue
+
+    try {
+      const days = await provider.history(asset, range)
+      await saveQuoteDays(days)
+      out.days += days.length
+      tried[asset.id] = today
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Error'
+      out.errors.push({ assetName: asset.name, message })
+      // Sin conexión se reintenta enseguida; un ticker desconocido, mañana.
+      if (!/Sin conexión/.test(message)) tried[asset.id] = today
+    }
+  }
+  await setMeta(QUOTE_META.historyTried, tried)
+  return out
 }

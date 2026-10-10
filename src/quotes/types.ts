@@ -1,4 +1,4 @@
-import type { Asset, AssetType, Quote } from '../domain/types'
+import type { Asset, AssetType, Quote, QuoteDay } from '../domain/types'
 
 /** Un valor encontrado al buscar por nombre o ticker. */
 export interface SearchHit {
@@ -26,6 +26,10 @@ export interface PriceProvider {
   getQuotes(assets: Asset[]): Promise<QuoteResult>
   /** Busca valores por nombre o ticker. Los proveedores sin búsqueda no lo definen. */
   search?(query: string): Promise<SearchHit[]>
+  /** Cierres diarios del activo en el periodo. Solo algunos proveedores lo dan. */
+  history?(asset: Asset, range: HistoryRange): Promise<QuoteDay[]>
 }
 
 export type Fetcher = typeof fetch
+
+export type HistoryRange = '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | '10y' | 'max'

@@ -1,7 +1,7 @@
 import { Decimal } from '../domain/numbers'
-import type { Asset, AssetType, Quote } from '../domain/types'
+import type { Asset, AssetType, Quote, QuoteDay } from '../domain/types'
 import { guessCurrency } from './finnhub'
-import type { Fetcher, PriceProvider, QuoteResult, SearchHit } from './types'
+import type { Fetcher, HistoryRange, PriceProvider, QuoteResult, SearchHit } from './types'
 
 /**
  * Yahoo Finance a través del proxy propio de `worker/yahoo-proxy.js` (Cloudflare
@@ -114,6 +114,39 @@ export function createYahooProvider(proxyUrl: string, fetcher: Fetcher = (...a) 
       return out
     },
 
+    async history(asset: Asset, range: HistoryRange): Promise<QuoteDay[]> {
+      const symbol = asset.ticker!.toUpperCase()
+      let res: Response
+      try {
+        res = await fetcher(`${base}/history?symbol=${encodeURIComponent(symbol)}&range=${range}`)
+      } catch (e) {
+        throw new Error(isOffline(e) ? 'Sin conexión con el proxy de Yahoo.' : 'No se pudo pedir el histórico.')
+      }
+      if (!res.ok) {
+        throw new Error(res.status === 429 ? 'Yahoo limita las llamadas. Espera un poco.' : `El proxy de Yahoo respondió con el error ${res.status}. ¿Has actualizado el código del Worker?`)
+      }
+      const data = (await res.json()) as {
+        currency?: string | null
+        days?: { date?: string; close?: number | null; high?: number | null; low?: number | null }[]
+      }
+      if (!data.currency || !Array.isArray(data.days)) throw new Error(`Yahoo no tiene histórico de ${symbol}.`)
+      const { currency, divisor } = normalizeCurrency(data.currency)
+      const scale = (n: number) => new Decimal(n).div(divisor).toString()
+      const out: QuoteDay[] = []
+      for (const d of data.days) {
+        if (!d.date || !d.close || d.close <= 0) continue
+        out.push({
+          assetId: asset.id,
+          date: d.date,
+          price: scale(d.close),
+          currency,
+          high: d.high && d.high > 0 ? scale(d.high) : undefined,
+          low: d.low && d.low > 0 ? scale(d.low) : undefined,
+        })
+      }
+      return out
+    },
+
     async search(query): Promise<SearchHit[]> {
       const res = await fetcher(`${base}/search?q=${encodeURIComponent(query)}`)
       if (!res.ok) throw new Error(res.status === 429 ? 'Yahoo limita las llamadas. Espera un poco.' : `El proxy de Yahoo respondió con el error ${res.status}.`)
@@ -138,16 +171,31 @@ export function createYahooProvider(proxyUrl: string, fetcher: Fetcher = (...a) 
   }
 }
 
-/** Comprueba que el proxy está bien desplegado pidiéndole una cotización de prueba. */
+/**
+ * Comprueba que el proxy está bien desplegado pidiéndole una cotización y un
+ * histórico de prueba. Si responde a lo primero pero no a lo segundo, es una
+ * versión antigua del código del Worker.
+ */
 export async function testYahooProxy(
   proxyUrl: string,
   fetcher: Fetcher = (...a) => fetch(...a),
-): Promise<{ ok: boolean; message: string }> {
+): Promise<{ ok: boolean; message: string; outdated?: boolean }> {
   const url = normalizeProxyUrl(proxyUrl)
   if (!url) return { ok: false, message: 'La dirección debe empezar por https:// (p. ej. https://buho-yahoo.tu-usuario.workers.dev).' }
   const probe: Asset = { id: 'test', name: 'Prueba', type: 'accion', currency: 'EUR', ticker: 'SAN.MC', createdAt: '', updatedAt: '' }
-  const r = await createYahooProvider(url, fetcher).getQuotes([probe])
+  const provider = createYahooProvider(url, fetcher)
+  const r = await provider.getQuotes([probe])
   const q = r.quotes.get('test')
-  if (q) return { ok: true, message: `Funciona: Banco Santander (SAN.MC) cotiza a ${q.price} ${q.currency}.` }
-  return { ok: false, message: r.errors.get('test') ?? 'No se pudo comprobar el proxy.' }
+  if (!q) return { ok: false, message: r.errors.get('test') ?? 'No se pudo comprobar el proxy.' }
+  const quoteMsg = `Funciona: Banco Santander (SAN.MC) cotiza a ${q.price} ${q.currency}.`
+  try {
+    const days = await provider.history!(probe, '1mo')
+    return { ok: true, message: `${quoteMsg} El histórico también (${days.length} días de prueba).` }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : ''
+    if (/error 404|error 400/.test(message)) {
+      return { ok: true, outdated: true, message: `${quoteMsg} Pero tu proxy es de una versión antigua y no tiene histórico: actualiza su código (ver la guía).` }
+    }
+    return { ok: true, message: `${quoteMsg} El histórico no ha respondido: ${message}` }
+  }
 }

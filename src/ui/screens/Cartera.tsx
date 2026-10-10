@@ -4,10 +4,9 @@ import { valuePositions } from '../../domain/valuation'
 import { useQuotes } from '../../quotes/QuotesContext'
 import { priceNote, RefreshLine } from '../prices'
 import { summarizeByYear, type Portfolio } from '../../domain/portfolio'
-import { ASSET_TYPES, type AssetType } from '../../domain/types'
+import { ASSET_TYPES, type AssetType, type Movement } from '../../domain/types'
+import { Historico } from '../Historico'
 import { Decimal } from '../../domain/numbers'
-
-const dateFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 
 export const TYPE_COLORS: Record<AssetType, string> = {
   accion: '#e8ab2c',
@@ -21,11 +20,12 @@ export const TYPE_COLORS: Record<AssetType, string> = {
 
 interface Props {
   portfolio: Portfolio
+  movements: Movement[]
   onAdd: () => void
   onOpenAsset: (assetId: string) => void
 }
 
-export function Cartera({ portfolio, onAdd, onOpenAsset }: Props) {
+export function Cartera({ portfolio, movements, onAdd, onOpenAsset }: Props) {
   const { positions, totalCostEur, issues } = portfolio
   const years = useMemo(() => summarizeByYear(portfolio), [portfolio])
   const [view, setView] = useState<'activa' | 'historico'>('activa')
@@ -204,90 +204,7 @@ export function Cartera({ portfolio, onAdd, onOpenAsset }: Props) {
         )}
       </p>
 
-      {years.length > 0 && (
-        <section>
-          <h2>Resultados por año</h2>
-          <div className="table-wrap">
-            <table className="years num">
-              <thead>
-                <tr>
-                  <th>Año</th>
-                  <th>Plusvalías</th>
-                  <th>Minusvalías</th>
-                  <th>Neto ventas</th>
-                  <th>Dividendos y cupones</th>
-                  <th>Retenciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {years.map((y) => (
-                  <tr key={y.year}>
-                    <td>{y.year}</td>
-                    <td className="gain">{formatMoney(y.gainsEur)}</td>
-                    <td className="loss">{formatMoney(y.lossesEur.abs())}</td>
-                    <td className={y.netGainEur.isNeg() ? 'loss' : 'gain'}>{formatSignedMoney(y.netGainEur)}</td>
-                    <td>{formatMoney(y.incomeGrossEur)}</td>
-                    <td>{formatMoney(y.withholdingEur)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="small muted" style={{ marginTop: 8 }}>
-            Orientativo. Aún no aplica la regla de los dos meses ni los traspasos entre fondos; compruébalo antes de usarlo en la declaración.
-          </p>
-        </section>
-      )}
-      {portfolio.sales.length > 0 && (
-        <section>
-          <h2>Ventas</h2>
-          <ul className="rows">
-            {[...portfolio.sales]
-              .sort((a, b) => (a.date < b.date ? 1 : -1))
-              .map((sale) => (
-                <li key={sale.movementId}>
-                  <div className="row">
-                    <span className="row-title">{sale.asset.name}</span>
-                    <span className="row-end num">
-                      <strong>{formatMoney(sale.proceedsEur)}</strong>
-                    </span>
-                    <span className="row-sub num">
-                      {dateFmt.format(new Date(sale.date))} · {formatQuantity(sale.quantity)} títulos
-                    </span>
-                    <span className={`row-sub row-end num ${sale.gainEur.isNeg() ? 'loss' : 'gain'}`}>
-                      {formatSignedMoney(sale.gainEur)}
-                    </span>
-                  </div>
-                </li>
-              ))}
-          </ul>
-        </section>
-      )}
-
-      {portfolio.income.length > 0 && (
-        <section>
-          <h2>Dividendos y cupones</h2>
-          <ul className="rows">
-            {[...portfolio.income]
-              .sort((a, b) => (a.date < b.date ? 1 : -1))
-              .map((i) => (
-                <li key={i.movementId}>
-                  <div className="row">
-                    <span className="row-title">{i.asset.name}</span>
-                    <span className="row-end num">
-                      <strong>{formatMoney(i.netEur)}</strong>
-                    </span>
-                    <span className="row-sub num">
-                      {dateFmt.format(new Date(i.date))} · {i.type === 'cupon' ? 'Cupón' : 'Dividendo'}
-                    </span>
-                    <span className="row-sub row-end num">Bruto {formatMoney(i.grossEur)}</span>
-                  </div>
-                </li>
-              ))}
-          </ul>
-        </section>
-      )}
-
+      <Historico portfolio={portfolio} movements={movements} />
         </>
       )}
     </>

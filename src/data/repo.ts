@@ -1,6 +1,6 @@
 import { db, getMeta, setMeta } from './db'
 import { mergeSnapshots } from './merge'
-import type { Asset, FxRates, ISODate, Movement, PricePoint, Quote, Snapshot } from '../domain/types'
+import type { Asset, FxRates, ISODate, Movement, PricePoint, Quote, QuoteDay, Snapshot } from '../domain/types'
 
 type NewRecord<T> = Omit<T, 'id' | 'createdAt' | 'updatedAt' | 'deleted'>
 
@@ -88,6 +88,8 @@ export const QUOTE_META = {
   refreshedAt: 'quotes.refreshedAt',
   /** Moneda principal con la que se enseñan los precios en Seguimiento. */
   baseCurrency: 'ui.baseCurrency',
+  /** Qué día se intentó por última vez descargar el histórico de cada activo (para no insistir). */
+  historyTried: 'quotes.historyTried',
 } as const
 
 export async function saveQuotes(quotes: Quote[]) {
@@ -96,6 +98,11 @@ export async function saveQuotes(quotes: Quote[]) {
   await db.quoteDays.bulkPut(
     quotes.map((q) => ({ assetId: q.assetId, date: q.at.slice(0, 10), price: q.price, currency: q.currency })),
   )
+}
+
+/** Guarda cierres diarios (histórico descargado). Un día ya guardado se sustituye por el nuevo. */
+export async function saveQuoteDays(days: QuoteDay[]) {
+  await db.quoteDays.bulkPut(days)
 }
 
 /**

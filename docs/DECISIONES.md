@@ -64,6 +64,14 @@ Registro de las decisiones tomadas y por qué. Si alguna cambia, añade una entr
 
 **Pendiente:** probarlo contra Yahoo real; desde el entorno de desarrollo no hay salida a la red, así que solo está probado con respuestas simuladas.
 
+## 2026-10-10: Excel generado en el navegador, sin librerías
+
+**Decisión:** el detalle de ventas por año se descarga como .xlsx escrito a mano (ZIP sin comprimir con los XML de Office, `domain/xlsx.ts`), con fórmulas en las columnas de resultado.
+
+**Por qué:** SheetJS (`xlsx`) en npm está desactualizado y con avisos de seguridad, y `exceljs` pesa cientos de KB para necesitar unas pocas hojas. Un escritor propio son ~200 líneas, cero dependencias y coste cero. Se validó abriendo el archivo con openpyxl y LibreOffice. Se descartó el CSV: Excel en español pide `;` y coma decimal y pierde formatos y fórmulas.
+
+**Límite:** sin compresión los archivos son algo más grandes (decenas de KB), sin importancia aquí.
+
 ## 2026-10-08: stack
 
 - Vite + React + TypeScript. `vite-plugin-pwa` para service worker y manifiesto.

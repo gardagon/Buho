@@ -1,9 +1,9 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db, setMeta } from '../data/db'
-import { QUOTE_META, saveAsset, wipeLocalData } from '../data/repo'
+import { QUOTE_META, saveAsset, saveMovement, wipeLocalData } from '../data/repo'
 import type { Asset } from '../domain/types'
-import { refreshQuotes, searchSecurities } from './service'
+import { rangeForDays, refreshHistory, refreshQuotes, searchSecurities } from './service'
 import { createYahooProvider, mapYahooType, normalizeCurrency, normalizeProxyUrl, testYahooProxy } from './yahoo'
 
 const PROXY = 'https://buho-yahoo.ejemplo.workers.dev'
@@ -81,12 +81,23 @@ describe('proxy de Yahoo', () => {
     expect(normalizeProxyUrl('a.b.dev')).toBeNull()
   })
 
-  it('la prueba del proxy dice si funciona', async () => {
-    const ok = await testYahooProxy(PROXY, async () => json({ quotes: { 'SAN.MC': { price: 4.5, currency: 'EUR' } } }))
-    expect(ok).toEqual({ ok: true, message: expect.stringContaining('4.5 EUR') })
-    const bad = await testYahooProxy(PROXY, async () => json({}, 403))
-    expect(bad.ok).toBe(false)
+  it('la prueba del proxy dice si funciona, con histórico', async () => {
+    const f = async (url: RequestInfo | URL) =>
+      String(url).includes('/history')
+        ? json({ currency: 'EUR', days: [{ date: '2026-10-08', close: 4.5 }] })
+        : json({ quotes: { 'SAN.MC': { price: 4.5, currency: 'EUR' } } })
+    const ok = await testYahooProxy(PROXY, f)
+    expect(ok).toEqual({ ok: true, message: expect.stringContaining('El histórico también') })
+    expect((await testYahooProxy(PROXY, async () => json({}, 403))).ok).toBe(false)
     expect((await testYahooProxy('nada')).ok).toBe(false)
+  })
+
+  it('avisa si el proxy es una versión antigua sin histórico', async () => {
+    const f = async (url: RequestInfo | URL) =>
+      String(url).includes('/history') ? json({ error: 'Ruta no encontrada' }, 404) : json({ quotes: { 'SAN.MC': { price: 4.5, currency: 'EUR' } } })
+    const r = await testYahooProxy(PROXY, f)
+    expect(r).toMatchObject({ ok: true, outdated: true })
+    expect(r.message).toMatch(/versión antigua/)
   })
 })
 
@@ -101,6 +112,7 @@ describe('Finnhub con Yahoo de respaldo', () => {
       return u.includes('symbol=AAPL') ? json({ c: 190, pc: 188, t: 1_790_000_000 }) : json({ error: 'sin acceso' }, 403)
     }
     if (u.includes('finnhub.io/api/v1/search')) return json({ result: [] })
+    if (u.includes('/history')) return json({ currency: 'EUR', days: [] })
     if (u.startsWith(PROXY + '/quote')) {
       return json({ quotes: { 'SAN.MC': { price: 4.52, previousClose: 4.4, currency: 'EUR', time: 1_790_000_000 } } })
     }
@@ -145,5 +157,102 @@ describe('Finnhub con Yahoo de respaldo', () => {
     const [r] = await searchSecurities('vodafone', f)
     expect(r.hit.currency).toBe('GBP')
     expect(r.quote?.price).toBe('0.725')
+  })
+})
+
+describe('histórico de Yahoo', () => {
+  beforeEach(wipeLocalData)
+
+  const histFetcher = (calls: string[], days = [{ date: '2026-10-08', close: 72.5, high: 74, low: 70 }], currency = 'GBp') =>
+    async (url: RequestInfo | URL) => {
+      calls.push(String(url))
+      return json({ symbol: 'VOD.L', currency, days })
+    }
+
+  it('convierte el histórico y pasa los peniques a libras', async () => {
+    const p = createYahooProvider(PROXY, histFetcher([]))
+    const days = await p.history!(asset('VOD.L'), '5y')
+    expect(days).toEqual([{ assetId: 'VOD.L', date: '2026-10-08', price: '0.725', currency: 'GBP', high: '0.74', low: '0.7' }])
+  })
+
+  it('ignora días sin cierre y falla con un mensaje claro si el proxy no tiene la ruta', async () => {
+    const p = createYahooProvider(PROXY, async () => json({ currency: 'EUR', days: [{ date: '2026-10-07', close: null }, { date: '2026-10-08', close: 4.5 }] }))
+    expect((await p.history!(asset('SAN.MC'), '1mo')).map((d) => d.date)).toEqual(['2026-10-08'])
+    const old = createYahooProvider(PROXY, async () => json({ error: 'Ruta no encontrada' }, 404))
+    await expect(old.history!(asset('SAN.MC'), '1mo')).rejects.toThrow(/actualizado el código del Worker/)
+  })
+
+  it('elige el periodo más corto que cubre los días que faltan', () => {
+    expect([10, 31, 60, 400, 1825, 2200, 9999].map(rangeForDays)).toEqual(['1mo', '1mo', '3mo', '2y', '5y', '10y', 'max'])
+  })
+
+  it('la primera vez baja 5 años, después solo lo que falta, y no insiste el mismo día', async () => {
+    const id = await saveAsset({ name: 'Vodafone', type: 'accion', currency: 'GBP', ticker: 'VOD.L', watched: true })
+    const a = (await db.assets.get(id))!
+    const calls: string[] = []
+    const provider = createYahooProvider(PROXY, histFetcher(calls))
+
+    // 1.ª vez: sin datos guardados → 5 años
+    await refreshHistory(provider, [a], [], '2026-10-09')
+    expect(calls[0]).toContain('range=5y')
+    expect(await db.quoteDays.count()).toBe(1)
+
+    // el mismo día no vuelve a pedir
+    await refreshHistory(provider, [a], [], '2026-10-09')
+    expect(calls).toHaveLength(1)
+
+    // Con 5 años ya guardados, 20 días después solo pide el último mes
+    const old = Array.from({ length: 1300 }, (_, i) => ({
+      assetId: id, date: new Date(Date.UTC(2021, 9, 10 + i)).toISOString().slice(0, 10), price: '1', currency: 'GBP',
+    }))
+    await db.quoteDays.clear()
+    await db.quoteDays.bulkPut(old) // llega hasta 2025-04-30 aprox.
+    const lastStored = old[old.length - 1].date
+    await refreshHistory(provider, [a], [], '2026-10-10')
+    expect(calls[1]).toContain(`range=${rangeForDays(Math.round((Date.parse('2026-10-10') - Date.parse(lastStored)) / 86_400_000) + 5)}`)
+  })
+
+  it('con una compra de hace más de 5 años, baja desde entonces', async () => {
+    const id = await saveAsset({ name: 'Vodafone', type: 'accion', currency: 'GBP', ticker: 'VOD.L', watched: true })
+    const m = await saveMovement({ assetId: id, type: 'compra', date: '2018-03-01', quantity: '1', price: '1', currency: 'GBP', fxRate: '1', fees: '0', withholding: '0' })
+    const calls: string[] = []
+    const movements = await db.movements.toArray()
+    await refreshHistory(createYahooProvider(PROXY, histFetcher(calls)), [(await db.assets.get(id))!], movements, '2026-10-09')
+    // 2018-03-01 → 2026-10-09 son unos 3.145 días: 10 años
+    expect(calls[0]).toContain('range=10y')
+    expect(m).toBeTruthy()
+  })
+
+  it('sin conexión reintenta enseguida; con un ticker que Yahoo no tiene, hasta mañana', async () => {
+    const id = await saveAsset({ name: 'Vodafone', type: 'accion', currency: 'GBP', ticker: 'VOD.L', watched: true })
+    const a = (await db.assets.get(id))!
+    let n = 0
+    const off = createYahooProvider(PROXY, async () => { n++; throw new TypeError('Failed to fetch') })
+    await refreshHistory(off, [a], [], '2026-10-09')
+    await refreshHistory(off, [a], [], '2026-10-09')
+    expect(n).toBe(2)
+    const bad = createYahooProvider(PROXY, async () => { n++; return json({ currency: 'EUR' }) })
+    await refreshHistory(bad, [a], [], '2026-10-09')
+    await refreshHistory(bad, [a], [], '2026-10-09')
+    expect(n).toBe(3)
+  })
+
+  it('la actualización de precios baja el histórico con Yahoo y no se rompe si este falla', async () => {
+    await saveAsset({ name: 'Santander', type: 'accion', currency: 'EUR', ticker: 'SAN.MC', watched: true })
+    await setMeta(QUOTE_META.yahooProxy, PROXY)
+    const ok = async (url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u.includes('frankfurter')) return json({ date: '2026-10-09', rates: { USD: 1.2 } })
+      if (u.includes('/history')) return json({ currency: 'EUR', days: [{ date: '2026-10-08', close: 4.5, high: 4.6, low: 4.4 }] })
+      return json({ quotes: { 'SAN.MC': { price: 4.52, currency: 'EUR', time: 1_790_000_000 } } })
+    }
+    const r = await refreshQuotes(ok)
+    expect(r.historyDays).toBe(1)
+    const noHistory = async (url: RequestInfo | URL) => (String(url).includes('/history') ? json({}, 404) : ok(url))
+    await db.quoteDays.clear()
+    await setMeta(QUOTE_META.historyTried, {})
+    const r2 = await refreshQuotes(noHistory)
+    expect(r2.updated).toBe(1)
+    expect(r2.failed[0].message).toMatch(/^Histórico:/)
   })
 })

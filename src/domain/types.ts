@@ -71,8 +71,12 @@ export interface PricePoint extends SyncedRecord {
 export interface QuoteDay {
   assetId: string
   date: ISODate
+  /** Cierre del día (o último precio visto, si el día aún no ha cerrado). */
   price: DecimalString
   currency: string
+  /** Máximo y mínimo del día, si el proveedor los da: sirven para comprobar precios de movimientos. */
+  high?: DecimalString
+  low?: DecimalString
 }
 
 /**

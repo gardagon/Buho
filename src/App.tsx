@@ -94,6 +94,7 @@ export function App() {
         {route === 'cartera' && (
           <Cartera
             portfolio={portfolio}
+            movements={movements}
             onAdd={() => go('movimientos')}
             onOpenAsset={(id) => setEditing({ kind: 'position', assetId: id })}
           />

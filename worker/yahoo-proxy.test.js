@@ -16,6 +16,17 @@ beforeEach(() => {
   globalThis.caches = { default: { match: async () => undefined, put: async () => {} } }
   globalThis.fetch = vi.fn(async (url) => {
     const u = String(url)
+    if (u.includes('/v8/finance/chart/SAN.MC') && u.includes('range=5y')) {
+      // 8-oct 22:30 UTC con +2 h es ya el 9-oct en Madrid; el tercer día no tiene cierre
+      const t = (iso) => Date.parse(iso) / 1000
+      return new Response(JSON.stringify({
+        chart: { result: [{
+          meta: { currency: 'EUR', gmtoffset: 7200 },
+          timestamp: [t('2026-10-07T08:00:00Z'), t('2026-10-08T22:30:00Z'), t('2026-10-09T08:00:00Z')],
+          indicators: { quote: [{ close: [4.5, 4.52, null], high: [4.6, 4.55, null], low: [4.4, 4.48, null] }] },
+        }], error: null },
+      }))
+    }
     if (u.includes('/v8/finance/chart/SAN.MC')) return new Response(JSON.stringify(chart(4.52, 4.4, 'EUR')))
     if (u.includes('/v8/finance/chart/')) return new Response(JSON.stringify({ chart: { result: null, error: { description: 'No data found' } } }))
     if (u.includes('/v1/finance/search')) {
@@ -38,6 +49,20 @@ describe('proxy de Yahoo (Worker)', () => {
   it('traduce la búsqueda', async () => {
     const body = await (await get('/search?q=santander')).json()
     expect(body.results).toEqual([{ symbol: 'SAN.MC', name: 'Banco Santander, S.A.', type: 'EQUITY', exchange: 'Madrid' }])
+  })
+
+  it('devuelve el histórico diario, con la fecha del mercado y sin los días sin cierre', async () => {
+    const body = await (await get('/history?symbol=SAN.MC&range=5y')).json()
+    expect(body.currency).toBe('EUR')
+    expect(body.days).toEqual([
+      { date: '2026-10-07', close: 4.5, high: 4.6, low: 4.4 },
+      { date: '2026-10-09', close: 4.52, high: 4.55, low: 4.48 },
+    ])
+  })
+
+  it('rechaza periodos y símbolos no válidos en el histórico', async () => {
+    expect((await get('/history?symbol=SAN.MC&range=20y')).status).toBe(400)
+    expect((await get('/history?symbol=../x&range=5y')).status).toBe(400)
   })
 
   it('rechaza webs que no son la de Buho', async () => {

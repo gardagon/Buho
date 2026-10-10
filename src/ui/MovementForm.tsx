@@ -1,5 +1,8 @@
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useMemo, useState } from 'react'
+import { db } from '../data/db'
 import { deleteMovement, saveMovement } from '../data/repo'
+import { checkTradePrice } from '../domain/checks'
 import { Decimal, d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
 import { computePortfolio, toEur } from '../domain/portfolio'
 import { completeTrade } from '../domain/trade'
@@ -121,6 +124,14 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
         totalEur: totalRaw ? d(totalRaw) : undefined,
       })
     : null
+  // ¿El precio cuadra con lo que cotizó ese día? (con el histórico descargado)
+  const day = useLiveQuery(
+    () => (assetId && /^\d{4}-\d{2}-\d{2}$/.test(date) ? db.quoteDays.get([assetId, date]) : undefined),
+    [assetId, date],
+  )
+  const check =
+    trade && t?.price ? checkTradePrice({ type, price: t.price.toString(), currency } as Movement, day) : null
+
   const fx = trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? ecbNow?.rate) : '1'
 
   const errors: Record<string, boolean> = {
@@ -391,6 +402,12 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
             <span className="muted"> · comisiones incluidas</span>
           </strong>
         </div>
+      )}
+      {check?.status === 'fuera' && (
+        <p className="notice small" role="status">
+          El {dayFmt.format(new Date(date + 'T12:00:00'))} cotizó entre {formatMoney(check.low!, check.currency)} y{' '}
+          {formatMoney(check.high!, check.currency)}. Revisa el precio, la divisa o la fecha (también puede ser un split posterior).
+        </p>
       )}
       {trade && t?.inconsistent && (
         <p className="error-text">

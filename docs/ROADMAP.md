@@ -38,6 +38,8 @@
 ### Yahoo Finance con proxy propio (BME, Xetra y resto de Europa)
 - [x] Worker de Cloudflare (`worker/yahoo-proxy.js`), proveedor `yahoo.ts`, respaldo cuando Finnhub falla, búsqueda y ajuste de la dirección
 - [x] Guía de instalación (`docs/YAHOO.md`)
+- [x] Histórico diario de Yahoo (ruta `/history`), usado en los periodos, el gráfico y la comprobación de precios de los movimientos
+- [ ] Comprobar con datos reales si el histórico viene ajustado por splits y afinar el aviso
 - [ ] Desplegar el Worker y probarlo con Yahoo real (solo está probado con respuestas simuladas)
 - [ ] Valorar si hace falta caché propia o un segundo respaldo si Yahoo limita las llamadas
 
@@ -47,6 +49,8 @@
 - [x] Histórico de precios manuales por valor, con gráfico, y precio en dólares o euros con su equivalente
 - [x] Cambio del BCE del día de cada movimiento (Frankfurter)
 - [x] Moneda principal (euros o dólares) en Seguimiento, con la otra debajo; fecha y hora de cada cotización; % en verde y rojo
+- [x] Histórico por años desplegable (totales por valor y ventas con sus compras FIFO) y descarga en Excel por año
+- [x] Guías de Finnhub y Yahoo dentro de Ajustes
 - [x] Cambio de pestaña deslizando
 - [x] Ficha de posición: rendimiento a 1 semana, 1 mes, 1 año, 2 y 5 años, y detalle por compra con sus ventas FIFO
 - [ ] Alinear el resto del modelo con la hoja de cálculo del usuario (campos, cuentas, divisas)
