@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { REQUEST_TIMEOUT_MS, timedFetch } from './http'
+import { clearNetLog, netLog, REQUEST_TIMEOUT_MS, timedFetch } from './http'
 
 describe('timedFetch', () => {
   afterEach(() => {
@@ -18,5 +18,15 @@ describe('timedFetch', () => {
   it('devuelve la respuesta si llega a tiempo', async () => {
     vi.stubGlobal('fetch', async () => new Response('ok'))
     expect(await (await timedFetch('https://x.test')).text()).toBe('ok')
+  })
+
+  it('anota cada petición con su estado y duración, sin claves', async () => {
+    clearNetLog()
+    vi.stubGlobal('fetch', async () => new Response('x', { status: 403 }))
+    await timedFetch('https://finnhub.io/api/v1/quote?symbol=SAN.MC&token=SECRETO')
+    const [e] = netLog()
+    expect(e.status).toBe(403)
+    expect(e.target).toBe('finnhub.io/api/v1/quote ?symbol=SAN.MC')
+    expect(JSON.stringify(netLog())).not.toContain('SECRETO')
   })
 })

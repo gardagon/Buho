@@ -1,4 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useSyncExternalStore } from 'react'
+import { clearNetLog, netLog, subscribeNetLog } from '../quotes/http'
 import { db } from '../data/db'
 import { QUOTE_META } from '../data/repo'
 import type { PriceInfo } from '../domain/valuation'
@@ -74,5 +76,39 @@ export function LastRunInfo() {
         </p>
       )}
     </div>
+  )
+}
+
+const clock = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+/** Registro de las últimas peticiones de red de las cotizaciones: destino, estado y lo que tardó. */
+export function NetDebug() {
+  const entries = useSyncExternalStore(subscribeNetLog, netLog)
+  const text = () => entries.map((e) => `${clock.format(new Date(e.at))}  ${(e.ms / 1000).toFixed(1)} s  ${e.status}  ${e.target}`).join('\n')
+  return (
+    <>
+      <LastRunInfo />
+      {entries.length === 0 ? (
+        <p className="small muted">Todavía no hay peticiones. Pulsa «Actualizar precios» y vuelve aquí.</p>
+      ) : (
+        <ul className="net-log num small">
+          {entries.map((e, i) => (
+            <li key={i} className={e.status === 'timeout' || e.status === 'error' || e.status >= 400 ? 'loss' : e.ms > 5000 ? 'slow' : undefined}>
+              <span>{(e.ms / 1000).toFixed(1).replace('.', ',')} s</span>
+              <span>{e.status}</span>
+              <span className="net-target">{e.target}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="actions">
+        <button className="btn small" disabled={entries.length === 0} onClick={() => void navigator.clipboard?.writeText(text())}>
+          Copiar el registro
+        </button>
+        <button className="btn ghost small" disabled={entries.length === 0} onClick={clearNetLog}>
+          Vaciar
+        </button>
+      </div>
+    </>
   )
 }

@@ -8,7 +8,7 @@ import { exportSnapshot, mergeIntoLocal, wipeLocalData } from '../../data/repo'
 import { META } from '../../sync/sync'
 import { useSync } from '../../sync/SyncContext'
 import { Guide, type GuideId } from '../Guides'
-import { LastRunInfo } from '../prices'
+import { NetDebug } from '../prices'
 import { useToast } from '../Toast'
 
 const timeFmt = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
@@ -217,7 +217,6 @@ export function Ajustes() {
           El plan gratuito de Finnhub solo cubre valores de EE. UU. Para BME, Xetra, fondos y bonos, usa Yahoo (más abajo) o
           escribe un precio manual en cada activo.
         </p>
-        <LastRunInfo />
         <p className="small">
           <button type="button" className="link-btn" onClick={() => setGuide('finnhub')}>
             Guía: cómo conseguir la clave de Finnhub
@@ -340,6 +339,15 @@ export function Ajustes() {
             }}
           />
         </div>
+      </section>
+
+      <section className="settings-group" aria-labelledby="debug-h">
+        <h2 id="debug-h">Diagnóstico de la red</h2>
+        <p>
+          Cada petición de cotizaciones, tipos de cambio e histórico, con lo que tardó. En rojo, las que fallaron; en ámbar,
+          las que tardaron más de 5 segundos. No incluye claves ni tus datos.
+        </p>
+        <NetDebug />
       </section>
 
       <section className="settings-group" aria-labelledby="danger-h">
