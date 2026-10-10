@@ -683,3 +683,24 @@ main.slide-right { animation: enter-from-left 0.2s ease-out; }
 .tax-lines li > span:last-child { text-align: right; white-space: nowrap; }
 .tax-lines .tax-sum { font-weight: 650; border-top: 1px solid var(--line); padding-top: 4px; margin-top: 2px; }
 .year-panel .total-line { flex-wrap: wrap; gap: 4px 12px; }
+
+/* ---------- Histórico: bloques separados y filas alineadas ---------- */
+
+.year-panel .block { display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--tone-venta); border-radius: var(--r-sm); min-width: 0; }
+.year-panel .block.dividendo { border-left-color: var(--tone-dividendo); }
+.year-panel .block .list-title { margin: 0; }
+.headline-main { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.headline-main strong { font-size: var(--step-2, 1.4rem); }
+.headline-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.info-btn { width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--ink-3); background: none; color: var(--ink-2); font: italic 600 0.75rem/1 serif; cursor: pointer; }
+.info-text { margin: 6px 0 0; }
+.lines { display: grid; gap: 4px; margin: 0; }
+.lines > div { display: flex; justify-content: space-between; gap: 12px; }
+.lines dt { color: var(--ink-2); font-size: var(--step--1); min-width: 0; }
+.lines dd { margin: 0; font-size: var(--step--1); text-align: right; white-space: nowrap; }
+.lines > div:last-child dd { font-weight: 650; }
+.asset-detail .block { padding: 0; border: 0; background: none; }
+.group-head { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-left: 4px solid var(--tone-venta); border-radius: var(--r-sm); background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.block.dividendo .group-head { border-left-color: var(--tone-dividendo); }
+.group-body { display: grid; gap: 8px; margin-top: 8px; }
+.piece .lines dt, .piece .lines dd { font-size: 0.8rem; }

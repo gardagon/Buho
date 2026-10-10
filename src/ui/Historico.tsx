@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { Decimal } from '../domain/numbers'
 import { yearWorkbook } from '../domain/export'
 import { formatMoney, formatPercent, formatQuantity, formatSignedMoney } from '../domain/numbers'
@@ -44,7 +44,6 @@ export function Historico({ portfolio, movements }: Props) {
         {years.map((y) => {
           const s = summaries.get(y)!
           const open = openYear === y
-          const sales = s.assets.reduce((n, a) => n + a.sales.length, 0)
           return (
             <li key={y}>
               <button
@@ -57,10 +56,6 @@ export function Historico({ portfolio, movements }: Props) {
                 </span>
                 <span className={`row-end num ${gl(s.totalEur)}`}>
                   <strong>{formatSignedMoney(s.totalEur)}</strong>
-                </span>
-                <span className="row-sub num">
-                  {sales === 0 ? 'Sin ventas' : `Ventas ${formatSignedMoney(s.netEur)}`}
-                  {!s.incomeNetEur.isZero() && ` · dividendos y cupones ${formatSignedMoney(s.incomeNetEur)}`}
                 </span>
                 <span className="row-sub row-end">{open ? 'Ocultar' : 'Ver detalle'}</span>
               </button>
@@ -95,37 +90,23 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
 
   return (
     <div className="year-panel">
-      <div className="total-line num">
-        <span>Resultado de {report.year}: ventas + dividendos y cupones netos</span>
-        <strong className={gl(report.totalEur)}>{formatSignedMoney(report.totalEur)}</strong>
-      </div>
-
       {hasSales && (
-        <>
+        <section className="block venta">
           <h3 className="list-title">Ventas</h3>
-          <dl className="kv num">
-            <div>
-              <dt>Plusvalías</dt>
-              <dd className="gain">{formatMoney(report.gainsEur)}</dd>
-            </div>
-            <div>
-              <dt>Minusvalías</dt>
-              <dd className={report.lossesEur.isZero() ? undefined : 'loss'}>{formatMoney(report.lossesEur.abs())}</dd>
-            </div>
-            <div>
-              <dt>Neto de ventas</dt>
-              <dd className={gl(report.netEur)}>{formatSignedMoney(report.netEur)}</dd>
-            </div>
-            <div>
-              <dt>Valor de transmisión</dt>
-              <dd>{formatMoney(report.proceedsEur)}</dd>
-            </div>
-            <div>
-              <dt>Coste de adquisición</dt>
-              <dd>{formatMoney(report.costEur)}</dd>
-            </div>
-          </dl>
-        </>
+          <Headline
+            label="Neto de ventas"
+            value={formatSignedMoney(report.netEur)}
+            tone={gl(report.netEur)}
+            info="Neto de ventas = plusvalías − minusvalías. Cada venta suma su valor de transmisión (lo que ingresas, menos comisiones) y resta su coste de adquisición (lo que pagaste por esos títulos, con comisiones)."
+          />
+          <Lines
+            rows={[
+              ['Plusvalías', formatMoney(report.gainsEur), 'gain'],
+              ['Minusvalías', formatMoney(report.lossesEur.abs()), report.lossesEur.isZero() ? undefined : 'loss'],
+              ['Coste de adquisición', formatMoney(report.costEur)],
+            ]}
+          />
+        </section>
       )}
 
       {hasDividends && <IncomeBlock title="Dividendos" t={report.dividends} />}
@@ -156,16 +137,6 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
                 <span className={`row-end num ${gl(a.totalEur)}`}>
                   <strong>{formatSignedMoney(a.totalEur)}</strong>
                 </span>
-                <span className="row-sub num">
-                  {a.sales.length > 0 && (
-                    <>
-                      Ventas {formatSignedMoney(a.profitEur)}
-                      {a.profitPct && ` (${formatPercent(a.profitPct)})`}
-                    </>
-                  )}
-                  {a.sales.length > 0 && a.incomes.length > 0 && ' · '}
-                  {a.incomes.length > 0 && <>Dividendos y cupones {formatSignedMoney(a.incomeNetEur)}</>}
-                </span>
                 <span className="row-sub row-end">{open ? 'Ocultar' : 'Ver detalle'}</span>
               </button>
               {open && <AssetDetail a={a} />}
@@ -177,26 +148,57 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
   )
 }
 
-/** Bruto, retención y neto de dividendos o de cupones. */
+/** Neto cobrado como cifra principal; debajo, bruto y retención. */
 function IncomeBlock({ title, t }: { title: string; t: { grossEur: Decimal; withholdingEur: Decimal; netEur: Decimal } }) {
   return (
-    <>
+    <section className="block dividendo">
       <h3 className="list-title">{title}</h3>
-      <dl className="kv num">
-        <div>
-          <dt>Bruto</dt>
-          <dd>{formatMoney(t.grossEur)}</dd>
+      <Headline
+        label="Neto cobrado"
+        value={formatSignedMoney(t.netEur)}
+        tone="gain"
+        info="Neto cobrado = bruto − retención − comisiones. Es lo que te llega a la cuenta."
+      />
+      <Lines
+        rows={[
+          ['Bruto', formatMoney(t.grossEur)],
+          ['Retención', formatMoney(t.withholdingEur)],
+        ]}
+      />
+    </section>
+  )
+}
+
+/** Cifra principal de un bloque, con una (i) que explica la fórmula al tocarla. */
+function Headline({ label, value, tone, info }: { label: string; value: string; tone?: string; info: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="headline">
+      <div className="headline-main">
+        <span className="headline-label">
+          {label}
+          <button className="info-btn" aria-expanded={open} aria-label={`Cómo se calcula: ${label}`} onClick={() => setOpen(!open)}>
+            i
+          </button>
+        </span>
+        <strong className={`num ${tone ?? ''}`}>{value}</strong>
+      </div>
+      {open && <p className="small muted info-text">{info}</p>}
+    </div>
+  )
+}
+
+/** Filas etiqueta/valor con los valores alineados a la derecha. */
+function Lines({ rows }: { rows: ([string, string] | [string, string, string | undefined])[] }) {
+  return (
+    <dl className="lines num">
+      {rows.map(([label, value, tone]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd className={tone}>{value}</dd>
         </div>
-        <div>
-          <dt>Retención</dt>
-          <dd>{formatMoney(t.withholdingEur)}</dd>
-        </div>
-        <div>
-          <dt>Neto cobrado</dt>
-          <dd className="gain">{formatSignedMoney(t.netEur)}</dd>
-        </div>
-      </dl>
-    </>
+      ))}
+    </dl>
   )
 }
 
@@ -291,25 +293,56 @@ function TaxBlock({ tax }: { tax: TaxEstimate }) {
 function AssetDetail({ a }: { a: AssetYear }) {
   return (
     <div className="asset-detail">
-      {a.sales.map((s) => (
-        <SaleCard key={s.movementId} sale={s} />
-      ))}
-      {a.incomes.length > 0 && (
-        <div className="sale-card income-card">
-          <header className="sale-head">
-            <strong>Dividendos y cupones</strong>
-            <span className="num">{formatMoney(a.incomeNetEur)} netos</span>
-          </header>
-          {a.incomes.map((i) => (
-            <p key={i.movementId} className="small muted num">
-              {day(i.date)} · {i.type === 'cupon' ? 'Cupón' : 'Dividendo'}: bruto {formatMoney(i.grossEur)}, retención{' '}
-              {formatMoney(i.withholdingEur)}
-              {!i.feesEur.isZero() && `, comisiones ${formatMoney(i.feesEur)}`}, neto {formatMoney(i.netEur)}
-            </p>
+      {a.sales.length > 0 && (
+        <Group
+          kind="venta"
+          title="Ventas"
+          total={formatSignedMoney(a.profitEur) + (a.profitPct ? ` (${formatPercent(a.profitPct)})` : '')}
+          tone={gl(a.profitEur)}
+        >
+          {a.sales.map((s) => (
+            <SaleCard key={s.movementId} sale={s} />
           ))}
-        </div>
+        </Group>
+      )}
+      {a.incomes.length > 0 && (
+        <Group kind="dividendo" title="Dividendos y cupones" total={formatSignedMoney(a.incomeNetEur)} tone="gain">
+          {a.incomes.map((i) => (
+            <article key={i.movementId} className="sale-card income-card">
+              <header className="sale-head">
+                <strong>
+                  {i.type === 'cupon' ? 'Cupón' : 'Dividendo'} del {day(i.date)}
+                </strong>
+              </header>
+              <Lines
+                rows={[
+                  ['Bruto', formatMoney(i.grossEur)],
+                  ['Retención', formatMoney(i.withholdingEur)],
+                  ...(i.feesEur.isZero() ? [] : ([['Comisiones', formatMoney(i.feesEur)]] as [string, string][])),
+                  ['Neto cobrado', formatMoney(i.netEur), 'gain'],
+                ]}
+              />
+            </article>
+          ))}
+        </Group>
       )}
     </div>
+  )
+}
+
+/** Sección de un valor (ventas o dividendos) con su total y la lista desplegable. */
+function Group({ kind, title, total, tone, children }: { kind: string; title: string; total: string; tone: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <section className={`block ${kind}`}>
+      <button className="group-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>
+          <span className="chev" aria-hidden>{open ? '▾' : '▸'}</span> {title}
+        </span>
+        <strong className={`num ${tone}`}>{total}</strong>
+      </button>
+      {open && <div className="group-body">{children}</div>}
+    </section>
   )
 }
 
@@ -319,35 +352,34 @@ function SaleCard({ sale: s }: { sale: SaleDetail }) {
     <article className="sale-card">
       <header className="sale-head">
         <strong>Venta del {day(s.date)}</strong>
-        <span className={`num ${gl(s.profitEur)}`}>
-          {formatSignedMoney(s.profitEur)}
-          {s.profitPct && ` (${formatPercent(s.profitPct)})`}
-        </span>
+        {s.account && <span className="small muted">{s.account}</span>}
       </header>
-      <p className="num">
-        {formatQuantity(s.quantity)} × {formatMoney(s.price, s.currency)} = <strong>{formatMoney(s.grossEur)}</strong>
-        {s.currency !== 'EUR' && <span className="muted"> (cambio {formatQuantity(s.fxRate)})</span>}
-      </p>
-      <p className="small muted num">
-        Comisiones {formatMoney(s.feesEur)} · valor de transmisión {formatMoney(s.proceedsEur)} · coste de adquisición{' '}
-        {formatMoney(s.costEur)}
-        {s.account && ` · ${s.account}`}
-      </p>
+      <Lines
+        rows={[
+          ['Cantidad', formatQuantity(s.quantity)],
+          ['Precio', formatMoney(s.price, s.currency)],
+          ...(s.currency !== 'EUR' ? ([['Cambio', formatQuantity(s.fxRate)]] as [string, string][]) : []),
+          ['Importe bruto', formatMoney(s.grossEur)],
+          ['Comisiones', formatMoney(s.feesEur)],
+          ['Valor de transmisión', formatMoney(s.proceedsEur)],
+          ['Coste de adquisición', formatMoney(s.costEur)],
+          ['Resultado', formatSignedMoney(s.profitEur) + (s.profitPct ? ` (${formatPercent(s.profitPct)})` : ''), gl(s.profitEur)],
+        ]}
+      />
       {s.pieces.map((p) => (
         <div key={p.buyMovementId + p.quantity.toString()} className="piece">
           <div className="piece-title">
-            Sale de la compra del {day(p.buyDate)} <span className="muted">· {p.holdingDays} días</span>
+            Compra del {day(p.buyDate)} <span className="muted">· {p.holdingDays} días</span>
           </div>
-          <div className="num">
-            {formatQuantity(p.quantity)} × {formatMoney(p.buyPrice, p.buyCurrency)} · coste {formatMoney(p.costEur)}
-          </div>
-          <div className="num">
-            Ingreso {formatMoney(p.proceedsEur)} ·{' '}
-            <span className={gl(p.profitEur)}>
-              beneficio {formatSignedMoney(p.profitEur)}
-              {p.profitPct && ` (${formatPercent(p.profitPct)})`}
-            </span>
-          </div>
+          <Lines
+            rows={[
+              ['Cantidad', formatQuantity(p.quantity)],
+              ['Precio de compra', formatMoney(p.buyPrice, p.buyCurrency)],
+              ['Coste', formatMoney(p.costEur)],
+              ['Ingreso', formatMoney(p.proceedsEur)],
+              ['Resultado', formatSignedMoney(p.profitEur) + (p.profitPct ? ` (${formatPercent(p.profitPct)})` : ''), gl(p.profitEur)],
+            ]}
+          />
         </div>
       ))}
     </article>
