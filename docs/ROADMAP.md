@@ -73,6 +73,11 @@ Ver `docs/FISCALIDAD.md`, sección «Pendiente».
 - [ ] Política de privacidad publicada (requisito para la verificación de Google si se abre al público)
 - [ ] Valorar empaquetado para Google Play (TWA, 25 $)
 
+## Deuda técnica
+
+- **Sesión de Drive caduca cada hora.** En el navegador, Google solo da un acceso de una hora y renovarlo abre una ventana (a veces hace falta un toque). Pedir ese toque cada vez que se abre la app es peor, a nivel de UX, que no estar conectado, así que se deja como está: conexión manual con **Sincronizar**. Salidas: reconexión automática (sin garantías en móvil), token de renovación con el Worker de Cloudflare (el Worker vería los tokens) o app nativa, donde `signInSilently()` renueva sin ventana. Ver `docs/DECISIONES.md`.
+- **App nativa.** Cuando todo esté estable, valorar pasar a nativa (Android). El dominio, los tests y el formato de `Snapshot` son lo reutilizable; la interfaz y el acceso a datos habría que reescribirlos.
+
 ## Ideas de mejora detectadas
 
 - Al abrir la app conectada a Drive, la píldora pide un toque para reconectar: valorar un aviso más visible si hace días que no se sincroniza.

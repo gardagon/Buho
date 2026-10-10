@@ -2,6 +2,14 @@
 
 Registro de las decisiones tomadas y por qué. Si alguna cambia, añade una entrada nueva con la fecha en vez de borrar la anterior.
 
+## 2026-10-10: la sesión de Drive caduca cada hora y se deja así
+
+**Contexto.** En el navegador, Google Identity Services solo da un token de acceso de una hora. El token de renovación exige un servidor que guarde el secreto del cliente. Una app nativa (como Delfin, con `google_sign_in` en Android) renueva sin ventana porque lo resuelve Google Play Services.
+
+**Decisión.** Mantener la conexión manual (**Sincronizar**) y no añadir reconexión automática: si el móvil bloquea la ventana, pedir un toque en cada apertura es peor que no estar conectado. Tampoco se pasa el secreto a un Worker, para que ningún servicio ajeno vea los tokens.
+
+**Revisar cuando** se valore la app nativa (ver «Deuda técnica» en `docs/ROADMAP.md`).
+
 ## 2026-10-08: PWA en lugar de app nativa
 
 **Decisión:** aplicación web instalable (PWA) alojada en GitHub Pages.
