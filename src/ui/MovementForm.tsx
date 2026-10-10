@@ -373,8 +373,21 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
             </Field>
           </div>
           <div className="grid-2">
-            <Field label={`Comisiones (${currency})`} hint="Incluye cánones y gastos">
-              <input inputMode="decimal" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0" aria-invalid={bad('fees')} />
+            <Field
+              label="Divisa del importe"
+              hint={
+                asset && currency !== asset.currency
+                  ? `Aunque el valor cotice en ${asset.currency}, aquí lo apuntas en ${currency}.`
+                  : 'La moneda en la que te lo pagan'
+              }
+            >
+              <select value={currency} onChange={(e) => setCurrencyChoice(e.target.value)}>
+                {currencyOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c === 'EUR' ? 'Euros (€)' : c === 'USD' ? 'Dólares ($)' : c}
+                  </option>
+                ))}
+              </select>
             </Field>
             {needsFx && (
               <Field
@@ -390,6 +403,11 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
                 />
               </Field>
             )}
+          </div>
+          <div className="grid-2">
+            <Field label={`Comisiones (${currency})`} hint="Incluye cánones y gastos">
+              <input inputMode="decimal" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0" aria-invalid={bad('fees')} />
+            </Field>
           </div>
         </>
       )}
