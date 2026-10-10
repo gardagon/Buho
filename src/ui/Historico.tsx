@@ -57,7 +57,6 @@ export function Historico({ portfolio, movements }: Props) {
                 <span className={`row-end num ${gl(s.totalEur)}`}>
                   <strong>{formatSignedMoney(s.totalEur)}</strong>
                 </span>
-                <span className="row-sub row-end">{open ? 'Ocultar' : 'Ver detalle'}</span>
               </button>
               {open && report && <YearPanel report={report} tax={tax} />}
             </li>
@@ -137,7 +136,6 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
                 <span className={`row-end num ${gl(a.totalEur)}`}>
                   <strong>{formatSignedMoney(a.totalEur)}</strong>
                 </span>
-                <span className="row-sub row-end">{open ? 'Ocultar' : 'Ver detalle'}</span>
               </button>
               {open && <AssetDetail a={a} />}
             </li>
