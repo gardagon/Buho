@@ -267,7 +267,6 @@ section > h2 { font-size: var(--step-1); margin-bottom: 8px; }
   color: var(--ink-2);
   border: 1px solid var(--line);
 }
-.tag.compra { background: var(--amber-soft); color: var(--ink); border-color: transparent; }
 
 .empty {
   padding: 28px 20px;
@@ -661,3 +660,15 @@ main.slide-right { animation: enter-from-left 0.2s ease-out; }
 }
 .guide a { color: inherit; text-decoration: underline; }
 .link-btn { padding: 0; min-height: 0; background: none; border: 0; color: inherit; text-decoration: underline; font: inherit; cursor: pointer; }
+
+/* ---------- Etiquetas del tipo de movimiento: rellenas con el color de cada tipo ---------- */
+
+:root { --tone-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --tone-ink: #0f1720; } }
+:root[data-theme='dark'] { --tone-ink: #0f1720; }
+
+.tag.compra, .tag.venta, .tag.dividendo, .tag.cupon { color: var(--tone-ink); border-color: transparent; padding: 2px 9px; }
+.tag.compra { background: var(--tone-compra); }
+.tag.venta { background: var(--tone-venta); }
+.tag.dividendo { background: var(--tone-dividendo); }
+.tag.cupon { background: var(--tone-cupon); }
