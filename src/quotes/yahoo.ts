@@ -190,7 +190,7 @@ export async function testYahooProxy(
   const quoteMsg = `Funciona: Banco Santander (SAN.MC) cotiza a ${q.price} ${q.currency}.`
   try {
     const days = await provider.history!(probe, '1mo')
-    return { ok: true, message: `${quoteMsg} El histórico también (${days.length} días de prueba).` }
+    return { ok: true, message: `${quoteMsg} El histórico también (probado con el último mes: ${days.length} sesiones; el real baja hasta 5 años).` }
   } catch (e) {
     const message = e instanceof Error ? e.message : ''
     if (/error 404|error 400/.test(message)) {
