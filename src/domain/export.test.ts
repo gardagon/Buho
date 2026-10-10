@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { yearWorkbook } from './export'
 import { computePortfolio } from './portfolio'
 import { yearReport, yearsWithActivity } from './sales'
+import { estimateTax } from './tax'
 import type { Asset, Movement } from './types'
 import { buildXlsx, crc32, excelDate, sheetName } from './xlsx'
 
@@ -88,14 +89,15 @@ function readZip(zip: Uint8Array) {
 }
 
 describe('xlsx', () => {
-  const sheets = yearWorkbook(yearReport(portfolio, movements, '2026'), '10/10/2026')
+  const report = yearReport(portfolio, movements, '2026')
+  const sheets = yearWorkbook(report, '10/10/2026', estimateTax([report], '2026'))
   const zip = buildXlsx(sheets)
   const files = readZip(zip)
 
   it('es un ZIP válido con las partes que Excel espera', () => {
     expect(Object.keys(files)).toEqual([
       '[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml',
-      'xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet3.xml', 'xl/worksheets/sheet4.xml',
+      'xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml', 'xl/worksheets/sheet3.xml', 'xl/worksheets/sheet4.xml', 'xl/worksheets/sheet5.xml',
     ])
     for (const [name, xml] of Object.entries(files)) {
       expect(xml.startsWith('<?xml'), name).toBe(true)
@@ -111,6 +113,20 @@ describe('xlsx', () => {
     expect(detail).toContain('<f>K2-O2</f><v>98</v>') // beneficio
     expect(detail).toContain('<f>SUM(P2:P3)</f><v>137</v>')
     expect(detail).toContain(`<v>${excelDate('2026-06-01')}</v>`)
+  })
+
+  it('la hoja de Hacienda lleva la base, la cuota y lo que queda por pagar', () => {
+    // Ventas +137 € y dividendo 10 € brutos con 1,90 € de retención → base 147 € → cuota 147 × 19 % = 27,93 € → a pagar 26,03 €
+    const tax = files['xl/worksheets/sheet4.xml']
+    expect(files['xl/workbook.xml']).toContain('name="Hacienda (estimación)"')
+    expect(tax).toContain('<v>147</v>')
+    expect(tax).toContain('<v>27.93</v>')
+    expect(tax).toContain('<v>26.03</v>')
+  })
+
+  it('el resumen suma el resultado total: ventas + dividendos netos', () => {
+    // 137 € de ventas + 8,10 € de dividendos netos = 145,10 €
+    expect(files['xl/worksheets/sheet1.xml']).toContain('<f>G2+K2</f><v>145.1</v>')
   })
 
   it('las fechas de Excel y los nombres de hoja se calculan bien', () => {

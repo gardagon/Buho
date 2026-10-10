@@ -52,6 +52,13 @@ export interface IncomeLine {
   netEur: Decimal
 }
 
+/** Importes de un tipo de rendimiento (dividendos o cupones) en un año, en EUR. */
+export interface IncomeTotals {
+  grossEur: Decimal
+  withholdingEur: Decimal
+  netEur: Decimal
+}
+
 export interface AssetYear {
   asset: Asset
   sales: SaleDetail[]
@@ -63,6 +70,10 @@ export interface AssetYear {
   incomeGrossEur: Decimal
   withholdingEur: Decimal
   incomeNetEur: Decimal
+  dividends: IncomeTotals
+  coupons: IncomeTotals
+  /** Resultado del valor en el año: beneficio de las ventas + dividendos y cupones netos de retención. */
+  totalEur: Decimal
 }
 
 export interface YearReport {
@@ -78,6 +89,10 @@ export interface YearReport {
   incomeGrossEur: Decimal
   withholdingEur: Decimal
   incomeNetEur: Decimal
+  dividends: IncomeTotals
+  coupons: IncomeTotals
+  /** Resultado del año: beneficio de las ventas + dividendos y cupones netos de retención. */
+  totalEur: Decimal
 }
 
 const ZERO = new Decimal(0)
@@ -107,6 +122,9 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
       a = {
         asset, sales: [], proceedsEur: ZERO, costEur: ZERO, profitEur: ZERO, incomes: [],
         incomeGrossEur: ZERO, withholdingEur: ZERO, incomeNetEur: ZERO,
+        dividends: { grossEur: ZERO, withholdingEur: ZERO, netEur: ZERO },
+        coupons: { grossEur: ZERO, withholdingEur: ZERO, netEur: ZERO },
+        totalEur: ZERO,
       }
       assets.set(asset.id, a)
     }
@@ -181,6 +199,13 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
     a.incomeGrossEur = sum(a.incomes.map((i) => i.grossEur))
     a.withholdingEur = sum(a.incomes.map((i) => i.withholdingEur))
     a.incomeNetEur = sum(a.incomes.map((i) => i.netEur))
+    const totals = (type: IncomeLine['type']): IncomeTotals => {
+      const xs = a.incomes.filter((i) => i.type === type)
+      return { grossEur: sum(xs.map((i) => i.grossEur)), withholdingEur: sum(xs.map((i) => i.withholdingEur)), netEur: sum(xs.map((i) => i.netEur)) }
+    }
+    a.dividends = totals('dividendo')
+    a.coupons = totals('cupon')
+    a.totalEur = a.profitEur.plus(a.incomeNetEur)
   }
 
   const allSales = list.flatMap((a) => a.sales)
@@ -195,5 +220,16 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
     incomeGrossEur: sum(list.map((a) => a.incomeGrossEur)),
     withholdingEur: sum(list.map((a) => a.withholdingEur)),
     incomeNetEur: sum(list.map((a) => a.incomeNetEur)),
+    dividends: {
+      grossEur: sum(list.map((a) => a.dividends.grossEur)),
+      withholdingEur: sum(list.map((a) => a.dividends.withholdingEur)),
+      netEur: sum(list.map((a) => a.dividends.netEur)),
+    },
+    coupons: {
+      grossEur: sum(list.map((a) => a.coupons.grossEur)),
+      withholdingEur: sum(list.map((a) => a.coupons.withholdingEur)),
+      netEur: sum(list.map((a) => a.coupons.netEur)),
+    },
+    totalEur: sum(allSales.map((s) => s.profitEur)).plus(sum(list.map((a) => a.incomeNetEur))),
   }
 }

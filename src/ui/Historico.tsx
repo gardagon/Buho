@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
+import type { Decimal } from '../domain/numbers'
 import { yearWorkbook } from '../domain/export'
 import { formatMoney, formatPercent, formatQuantity, formatSignedMoney } from '../domain/numbers'
 import type { Portfolio } from '../domain/portfolio'
 import { yearReport, yearsWithActivity, type AssetYear, type SaleDetail, type YearReport } from '../domain/sales'
+import { estimateTax, type TaxEstimate } from '../domain/tax'
 import type { Movement } from '../domain/types'
 import { buildXlsx } from '../domain/xlsx'
 import { downloadFile, XLSX_TYPE } from './download'
@@ -27,6 +29,11 @@ export function Historico({ portfolio, movements }: Props) {
   const [openYear, setOpenYear] = useState<string | null>(null)
   const report = useMemo(() => (openYear ? yearReport(portfolio, movements, openYear) : null), [portfolio, movements, openYear])
   const summaries = useMemo(() => new Map(years.map((y) => [y, yearReport(portfolio, movements, y)])), [portfolio, movements, years])
+  // La estimación de un año necesita los anteriores: sus pérdidas pendientes se compensan con las ganancias de los siguientes.
+  const tax = useMemo(
+    () => (openYear ? estimateTax([...years].reverse().map((y) => summaries.get(y)!), openYear) : undefined),
+    [openYear, years, summaries],
+  )
 
   if (years.length === 0) return null
 
@@ -48,16 +55,16 @@ export function Historico({ portfolio, movements }: Props) {
                 <span className="row-title">
                   <span className="chev" aria-hidden>{open ? '▾' : '▸'}</span> {y}
                 </span>
-                <span className={`row-end num ${gl(s.netEur)}`}>
-                  <strong>{formatSignedMoney(s.netEur)}</strong>
+                <span className={`row-end num ${gl(s.totalEur)}`}>
+                  <strong>{formatSignedMoney(s.totalEur)}</strong>
                 </span>
                 <span className="row-sub num">
-                  {sales === 0 ? 'Sin ventas' : sales === 1 ? '1 venta' : `${sales} ventas`}
-                  {!s.incomeGrossEur.isZero() && ` · dividendos ${formatMoney(s.incomeGrossEur)}`}
+                  {sales === 0 ? 'Sin ventas' : `Ventas ${formatSignedMoney(s.netEur)}`}
+                  {!s.incomeNetEur.isZero() && ` · dividendos y cupones ${formatSignedMoney(s.incomeNetEur)}`}
                 </span>
                 <span className="row-sub row-end">{open ? 'Ocultar' : 'Ver detalle'}</span>
               </button>
-              {open && report && <YearPanel report={report} />}
+              {open && report && <YearPanel report={report} tax={tax} />}
             </li>
           )
         })}
@@ -69,7 +76,7 @@ export function Historico({ portfolio, movements }: Props) {
   )
 }
 
-function YearPanel({ report }: { report: YearReport }) {
+function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
   const [openAssets, setOpenAssets] = useState<Set<string>>(new Set())
   const toggle = (id: string) =>
     setOpenAssets((prev) => {
@@ -79,37 +86,52 @@ function YearPanel({ report }: { report: YearReport }) {
     })
 
   function download() {
-    downloadFile(`buho-ventas-${report.year}.xlsx`, buildXlsx(yearWorkbook(report, today())), XLSX_TYPE)
+    downloadFile(`buho-ventas-${report.year}.xlsx`, buildXlsx(yearWorkbook(report, today(), tax)), XLSX_TYPE)
   }
+
+  const hasSales = report.assets.some((a) => a.sales.length > 0)
+  const hasDividends = !report.dividends.grossEur.isZero()
+  const hasCoupons = !report.coupons.grossEur.isZero()
 
   return (
     <div className="year-panel">
-      <dl className="kv num">
-        <div>
-          <dt>Plusvalías</dt>
-          <dd className="gain">{formatMoney(report.gainsEur)}</dd>
-        </div>
-        <div>
-          <dt>Minusvalías</dt>
-          <dd className={report.lossesEur.isZero() ? undefined : "loss"}>{formatMoney(report.lossesEur.abs())}</dd>
-        </div>
-        <div>
-          <dt>Neto de ventas</dt>
-          <dd className={gl(report.netEur)}>{formatSignedMoney(report.netEur)}</dd>
-        </div>
-        <div>
-          <dt>Dividendos y cupones</dt>
-          <dd>{formatMoney(report.incomeGrossEur)}</dd>
-        </div>
-        <div>
-          <dt>Valor de transmisión</dt>
-          <dd>{formatMoney(report.proceedsEur)}</dd>
-        </div>
-        <div>
-          <dt>Retenciones</dt>
-          <dd>{formatMoney(report.withholdingEur)}</dd>
-        </div>
-      </dl>
+      <div className="total-line num">
+        <span>Resultado de {report.year}: ventas + dividendos y cupones netos</span>
+        <strong className={gl(report.totalEur)}>{formatSignedMoney(report.totalEur)}</strong>
+      </div>
+
+      {hasSales && (
+        <>
+          <h3 className="list-title">Ventas</h3>
+          <dl className="kv num">
+            <div>
+              <dt>Plusvalías</dt>
+              <dd className="gain">{formatMoney(report.gainsEur)}</dd>
+            </div>
+            <div>
+              <dt>Minusvalías</dt>
+              <dd className={report.lossesEur.isZero() ? undefined : 'loss'}>{formatMoney(report.lossesEur.abs())}</dd>
+            </div>
+            <div>
+              <dt>Neto de ventas</dt>
+              <dd className={gl(report.netEur)}>{formatSignedMoney(report.netEur)}</dd>
+            </div>
+            <div>
+              <dt>Valor de transmisión</dt>
+              <dd>{formatMoney(report.proceedsEur)}</dd>
+            </div>
+            <div>
+              <dt>Coste de adquisición</dt>
+              <dd>{formatMoney(report.costEur)}</dd>
+            </div>
+          </dl>
+        </>
+      )}
+
+      {hasDividends && <IncomeBlock title="Dividendos" t={report.dividends} />}
+      {hasCoupons && <IncomeBlock title="Cupones" t={report.coupons} />}
+
+      {tax && <TaxBlock tax={tax} />}
 
       <div className="actions">
         <button className="btn small" onClick={download}>
@@ -117,7 +139,8 @@ function YearPanel({ report }: { report: YearReport }) {
         </button>
       </div>
       <p className="small muted" style={{ margin: 0 }}>
-        El Excel trae el resumen, cada venta con sus compras (con fórmulas, para que puedas comprobarlo) y los dividendos.
+        El Excel trae el resumen, cada venta con sus compras (con fórmulas, para que puedas comprobarlo), los dividendos y la
+        estimación para Hacienda.
       </p>
 
       <h3 className="list-title">Por valor</h3>
@@ -130,16 +153,20 @@ function YearPanel({ report }: { report: YearReport }) {
                 <span className="row-title">
                   <span className="chev" aria-hidden>{open ? '▾' : '▸'}</span> {a.asset.name}
                 </span>
-                <span className={`row-end num ${a.sales.length ? gl(a.profitEur) : ''}`}>
-                  <strong>{a.sales.length ? formatSignedMoney(a.profitEur) : '—'}</strong>
-                  {a.profitPct && <span> ({formatPercent(a.profitPct)})</span>}
+                <span className={`row-end num ${gl(a.totalEur)}`}>
+                  <strong>{formatSignedMoney(a.totalEur)}</strong>
                 </span>
                 <span className="row-sub num">
-                  {a.sales.length > 0 && `Vendido ${formatMoney(a.proceedsEur)} · coste ${formatMoney(a.costEur)}`}
+                  {a.sales.length > 0 && (
+                    <>
+                      Ventas {formatSignedMoney(a.profitEur)}
+                      {a.profitPct && ` (${formatPercent(a.profitPct)})`}
+                    </>
+                  )}
                   {a.sales.length > 0 && a.incomes.length > 0 && ' · '}
-                  {a.incomes.length > 0 && `Dividendos ${formatMoney(a.incomeGrossEur)}`}
+                  {a.incomes.length > 0 && <>Dividendos y cupones {formatSignedMoney(a.incomeNetEur)}</>}
                 </span>
-                <span className="row-sub row-end">{open ? 'Ocultar' : 'Ver ventas'}</span>
+                <span className="row-sub row-end">{open ? 'Ocultar' : 'Ver detalle'}</span>
               </button>
               {open && <AssetDetail a={a} />}
             </li>
@@ -147,6 +174,117 @@ function YearPanel({ report }: { report: YearReport }) {
         })}
       </ul>
     </div>
+  )
+}
+
+/** Bruto, retención y neto de dividendos o de cupones. */
+function IncomeBlock({ title, t }: { title: string; t: { grossEur: Decimal; withholdingEur: Decimal; netEur: Decimal } }) {
+  return (
+    <>
+      <h3 className="list-title">{title}</h3>
+      <dl className="kv num">
+        <div>
+          <dt>Bruto</dt>
+          <dd>{formatMoney(t.grossEur)}</dd>
+        </div>
+        <div>
+          <dt>Retención</dt>
+          <dd>{formatMoney(t.withholdingEur)}</dd>
+        </div>
+        <div>
+          <dt>Neto cobrado</dt>
+          <dd className="gain">{formatSignedMoney(t.netEur)}</dd>
+        </div>
+      </dl>
+    </>
+  )
+}
+
+const pct = (rate: number) => `${(rate * 100).toFixed(0)} %`
+
+/** Estimación de lo que se pagaría a Hacienda por la base del ahorro, con el cálculo a la vista. */
+function TaxBlock({ tax }: { tax: TaxEstimate }) {
+  const toPay = tax.resultEur.gte(0)
+  return (
+    <section className="tax-block">
+      <h3 className="list-title">Hacienda (estimación orientativa)</h3>
+      <dl className="kv num">
+        <div>
+          <dt>Base imponible del ahorro</dt>
+          <dd>{formatMoney(tax.baseEur)}</dd>
+        </div>
+        <div>
+          <dt>Cuota estimada</dt>
+          <dd>
+            {formatMoney(tax.cuotaEur)}
+            {tax.effectiveRate && <span className="muted"> ({formatPercent(tax.effectiveRate).replace('+', '')})</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>Retenciones ya pagadas</dt>
+          <dd>{formatMoney(tax.withholdingEur)}</dd>
+        </div>
+        <div>
+          <dt>{toPay ? 'A pagar (aprox.)' : 'A devolver (aprox.)'}</dt>
+          <dd className={toPay ? (tax.resultEur.isZero() ? undefined : 'loss') : 'gain'}>{formatMoney(tax.resultEur.abs())}</dd>
+        </div>
+      </dl>
+      <details>
+        <summary className="small muted">Cómo se calcula</summary>
+        <ul className="tax-lines num small">
+          <li>
+            <span>Ganancias y pérdidas por ventas</span>
+            <span>{formatSignedMoney(tax.salesEur)}</span>
+          </li>
+          <li>
+            <span>Dividendos y cupones (importe bruto)</span>
+            <span>{formatMoney(tax.incomeEur)}</span>
+          </li>
+          {!tax.carryAgainstSalesEur.isZero() && (
+            <li>
+              <span>Pérdidas de años anteriores aplicadas a las ganancias</span>
+              <span>−{formatMoney(tax.carryAgainstSalesEur)}</span>
+            </li>
+          )}
+          {!tax.lossAgainstIncomeEur.isZero() && (
+            <li>
+              <span>Pérdidas compensadas con dividendos y cupones (máximo el 25 % de estos)</span>
+              <span>−{formatMoney(tax.lossAgainstIncomeEur)}</span>
+            </li>
+          )}
+          <li className="tax-sum">
+            <span>Base imponible del ahorro</span>
+            <span>{formatMoney(tax.baseEur)}</span>
+          </li>
+          {tax.brackets.map((b) => (
+            <li key={b.from}>
+              <span>
+                {formatMoney(b.base)} al {pct(b.rate)}
+              </span>
+              <span>{formatMoney(b.tax)}</span>
+            </li>
+          ))}
+          <li className="tax-sum">
+            <span>Cuota − retenciones</span>
+            <span>
+              {formatMoney(tax.cuotaEur)} − {formatMoney(tax.withholdingEur)} = {formatSignedMoney(tax.resultEur)}
+            </span>
+          </li>
+        </ul>
+        {tax.pendingLosses.length > 0 && (
+          <p className="small muted">
+            Pérdidas que se podrán compensar en los próximos años:{' '}
+            {tax.pendingLosses.map((p) => `${formatMoney(p.amount)} de ${p.year} (hasta ${p.year + 4})`).join(', ')}.
+          </p>
+        )}
+        {tax.note && <p className="small muted">{tax.note}</p>}
+      </details>
+      <p className="small muted" style={{ margin: 0 }}>
+        Aproximación para territorio común (no País Vasco ni Navarra). Los dividendos tributan por el bruto y sus retenciones
+        se restan de la cuota. No incluye la regla de los dos meses, la deducción por doble imposición internacional ni
+        derechos de suscripción, y solo cuenta lo que hay en Buho. Contrástalo con el borrador de la Agencia Tributaria.
+      </p>
+    </section>
   )
 }
 

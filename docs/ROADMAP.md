@@ -49,6 +49,9 @@
 - [x] Histórico de precios manuales por valor, con gráfico, y precio en dólares o euros con su equivalente
 - [x] Cambio del BCE del día de cada movimiento (Frankfurter)
 - [x] Moneda principal (euros o dólares) en Seguimiento, con la otra debajo; fecha y hora de cada cotización; % en verde y rojo
+- [x] Histórico: el resultado de cada año suma ventas y dividendos netos, con el desglose de ventas, dividendos y cupones por separado (la retención solo en dividendos y cupones)
+- [x] Estimación orientativa de lo que se pagaría a Hacienda (base del ahorro, compensación de pérdidas, escala por años), en pantalla y en el Excel
+- [ ] Afinar la estimación: deducción por doble imposición internacional, regla de los dos meses y comunidades con escala propia
 - [x] Histórico por años desplegable (totales por valor y ventas con sus compras FIFO) y descarga en Excel por año
 - [x] Guías de Finnhub y Yahoo dentro de Ajustes
 - [x] Cambio de pestaña deslizando

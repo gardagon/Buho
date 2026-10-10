@@ -672,3 +672,14 @@ main.slide-right { animation: enter-from-left 0.2s ease-out; }
 .tag.venta { background: var(--tone-venta); }
 .tag.dividendo { background: var(--tone-dividendo); }
 .tag.cupon { background: var(--tone-cupon); }
+
+/* ---------- Hacienda ---------- */
+
+.tax-block { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); min-width: 0; }
+.tax-block .list-title { margin: 0; }
+.tax-lines { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.tax-lines li { display: flex; justify-content: space-between; gap: 12px; }
+.tax-lines li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.tax-lines li > span:last-child { text-align: right; white-space: nowrap; }
+.tax-lines .tax-sum { font-weight: 650; border-top: 1px solid var(--line); padding-top: 4px; margin-top: 2px; }
+.year-panel .total-line { flex-wrap: wrap; gap: 4px 12px; }

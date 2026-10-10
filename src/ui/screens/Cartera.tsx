@@ -4,6 +4,7 @@ import { valuePositions } from '../../domain/valuation'
 import { useQuotes } from '../../quotes/QuotesContext'
 import { priceNote, RefreshLine } from '../prices'
 import { summarizeByYear, type Portfolio } from '../../domain/portfolio'
+import { yearReport, yearsWithActivity } from '../../domain/sales'
 import { ASSET_TYPES, type AssetType, type Movement } from '../../domain/types'
 import { Historico } from '../Historico'
 import { Decimal } from '../../domain/numbers'
@@ -28,6 +29,7 @@ interface Props {
 export function Cartera({ portfolio, movements, onAdd, onOpenAsset }: Props) {
   const { positions, totalCostEur, issues } = portfolio
   const years = useMemo(() => summarizeByYear(portfolio), [portfolio])
+  const yearsList = useMemo(() => yearsWithActivity(portfolio), [portfolio])
   const [view, setView] = useState<'activa' | 'historico'>('activa')
   const { quotes, fx } = useQuotes()
   const valuation = useMemo(() => valuePositions(positions, quotes, fx), [positions, quotes, fx])
@@ -57,7 +59,7 @@ export function Cartera({ portfolio, movements, onAdd, onOpenAsset }: Props) {
     )
   }
 
-  const thisYear = years.find((y) => y.year === String(new Date().getFullYear()))
+  const thisYear = yearsList.includes(String(new Date().getFullYear())) ? yearReport(portfolio, movements, String(new Date().getFullYear())) : undefined
 
   return (
     <>
@@ -189,16 +191,16 @@ export function Cartera({ portfolio, movements, onAdd, onOpenAsset }: Props) {
       {view === 'historico' && (
         <>
       <p className="summary">
-        {thisYear ? (
+        {thisYear && !thisYear.totalEur.isZero() ? (
           <>
             En {thisYear.year} llevas{' '}
-            <strong className={`num ${thisYear.netGainEur.isNeg() ? 'loss' : 'gain'}`}>
-              {formatSignedMoney(thisYear.netGainEur)}
+            <strong className={`num ${thisYear.totalEur.isNeg() ? 'loss' : 'gain'}`}>
+              {formatSignedMoney(thisYear.totalEur)}
             </strong>{' '}
-            en ventas.
+            entre ventas y dividendos.
           </>
         ) : years.length > 0 ? (
-          'Este año no has vendido nada.'
+          'Este año no has vendido ni cobrado nada.'
         ) : (
           'Todavía no has vendido nada.'
         )}

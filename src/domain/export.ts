@@ -1,6 +1,7 @@
 import { Decimal } from './numbers'
 import type { Cell, SheetData } from './xlsx'
 import type { YearReport } from './sales'
+import type { TaxEstimate } from './tax'
 
 const n = (x: Decimal) => Number(x.toFixed(10))
 const eur = (x: Decimal, style: 'eur' | 'eurNegrita' = 'eur'): Cell => ({ v: n(x), style })
@@ -15,7 +16,7 @@ const col = (i: number) => String.fromCharCode(65 + i)
  * dividendos y cupones, y notas. Las columnas de resultado son fórmulas, para
  * que se pueda comprobar a mano y cambiar un dato.
  */
-export function yearWorkbook(r: YearReport, generatedOn: string): SheetData[] {
+export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstimate): SheetData[] {
   // ---------- Ventas (detalle) ----------
   const salesHead = head(
     'Valor', 'Ticker', 'ISIN',
@@ -61,7 +62,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string): SheetData[] {
 
   // ---------- Resumen por valor ----------
   const summary: Cell[][] = [
-    head('Valor', 'Ticker', 'ISIN', 'Ventas', 'Valor de transmisión (€)', 'Coste de adquisición (€)', 'Beneficio (€)', 'Beneficio (%)', 'Dividendos y cupones brutos (€)', 'Retenciones (€)', 'Dividendos y cupones netos (€)'),
+    head('Valor', 'Ticker', 'ISIN', 'Ventas', 'Valor de transmisión (€)', 'Coste de adquisición (€)', 'Beneficio (€)', 'Beneficio (%)', 'Dividendos y cupones brutos (€)', 'Retenciones (€)', 'Dividendos y cupones netos (€)', 'Resultado total (€)'),
   ]
   for (const a of r.assets) {
     const row = summary.length + 1
@@ -72,6 +73,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string): SheetData[] {
       { f: `IF(F${row}=0,"",G${row}/F${row})`, v: a.profitPct ? n(a.profitPct) : '', style: 'pct' },
       eur(a.incomeGrossEur), eur(a.withholdingEur),
       eur(a.incomeNetEur),
+      { f: `G${row}+K${row}`, v: n(a.totalEur), style: 'eur' },
     ])
   }
   if (summary.length > 1) {
@@ -83,7 +85,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string): SheetData[] {
       { f: `SUM(D2:D${last})`, v: r.assets.reduce((s, a) => s + a.sales.length, 0), style: 'negrita' },
       sumCol('E', r.proceedsEur), sumCol('F', r.costEur), sumCol('G', r.netEur),
       { f: `IF(F${t}=0,"",G${t}/F${t})`, v: r.costEur.gt(0) ? n(r.netEur.div(r.costEur)) : '', style: 'pctNegrita' },
-      sumCol('I', r.incomeGrossEur), sumCol('J', r.withholdingEur), sumCol('K', r.incomeNetEur),
+      sumCol('I', r.incomeGrossEur), sumCol('J', r.withholdingEur), sumCol('K', r.incomeNetEur), sumCol('L', r.totalEur),
     ])
     summary.push([])
     summary.push([{ v: 'Ventas con beneficio', style: 'negrita' }, null, null, null, null, null, eur(r.gainsEur, 'eurNegrita')])
@@ -116,10 +118,36 @@ export function yearWorkbook(r: YearReport, generatedOn: string): SheetData[] {
     [{ v: 'Aviso: es orientativo. No aplica la regla de los dos meses, los traspasos entre fondos ni los derechos de suscripción. Compruébalo antes de usarlo en la declaración.', style: 'texto' }],
   ]
 
+  const taxRows: Cell[][] = tax
+    ? [
+        [{ v: `Estimación para Hacienda de ${r.year} (orientativa)`, style: 'negrita' }],
+        [],
+        ['Ganancias y pérdidas patrimoniales por ventas', eur(tax.salesEur)],
+        ['Dividendos y cupones (importe bruto)', eur(tax.incomeEur)],
+        ['Pérdidas de años anteriores aplicadas a las ganancias de este año', eur(tax.carryAgainstSalesEur)],
+        ['Pérdidas compensadas con dividendos y cupones (hasta el 25 %)', eur(tax.lossAgainstIncomeEur)],
+        [{ v: 'Base imponible del ahorro', style: 'negrita' }, eur(tax.baseEur, 'eurNegrita')],
+        [],
+        head('Tramo desde (€)', 'Tramo hasta (€)', 'Tipo', 'Parte de la base (€)', 'Cuota (€)'),
+        ...tax.brackets.map((b): Cell[] => [eur(new Decimal(b.from)), b.to === null ? 'en adelante' : eur(new Decimal(b.to)), { v: b.rate, style: 'pct' }, eur(b.base), eur(b.tax)]),
+        [],
+        [{ v: 'Cuota estimada', style: 'negrita' }, eur(tax.cuotaEur, 'eurNegrita')],
+        ['Retenciones e ingresos a cuenta practicados', eur(tax.withholdingEur)],
+        [{ v: tax.resultEur.gte(0) ? 'A pagar (aprox.)' : 'A devolver (aprox.)', style: 'negrita' }, eur(tax.resultEur.abs(), 'eurNegrita')],
+        [],
+        ...(tax.pendingLosses.length
+          ? [[{ v: 'Pérdidas pendientes de compensar (hasta 4 años después)', style: 'negrita' } as Cell], ...tax.pendingLosses.map((p): Cell[] => [`Pérdida de ${p.year}`, eur(p.amount)])]
+          : []),
+        [],
+        [{ v: 'Aproximación para territorio común (no País Vasco ni Navarra). No incluye la regla de los dos meses, la deducción por doble imposición internacional ni derechos de suscripción. Solo cuenta lo que hay en Buho: si faltan años anteriores, faltarán sus pérdidas pendientes. Contrástalo con el borrador de la Agencia Tributaria.', style: 'texto' }],
+      ]
+    : []
+
   return [
-    { name: 'Resumen', rows: summary, widths: [34, 12, 15, 8, 18, 18, 16, 12, 20, 14, 20], freezeHeader: true },
+    { name: 'Resumen', rows: summary, widths: [34, 12, 15, 8, 18, 18, 16, 12, 20, 14, 20, 18], freezeHeader: true },
     { name: 'Ventas (detalle)', rows: sales, widths: [34, 12, 15, 13, 12, 14, 10, 12, 16, 15, 16, 13, 14, 10, 18, 14, 12, 10, 16], freezeHeader: true },
     { name: 'Dividendos y cupones', rows: income, widths: [34, 13, 12, 14, 14, 14, 14], freezeHeader: true },
+    ...(tax ? [{ name: 'Hacienda (estimación)', rows: taxRows, widths: [62, 18, 14, 20, 16] }] : []),
     { name: 'Notas', rows: notes, widths: [120] },
   ]
 }
