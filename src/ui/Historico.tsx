@@ -187,7 +187,7 @@ function Headline({ label, value, tone, info }: { label: string; value: string; 
 }
 
 /** Filas etiqueta/valor con los valores alineados a la derecha. */
-function Lines({ rows }: { rows: ([string, string] | [string, string, string | undefined])[] }) {
+export function Lines({ rows }: { rows: ([string, string] | [string, string, string | undefined])[] }) {
   return (
     <dl className="lines num">
       {rows.map(([label, value, tone]) => (
@@ -345,7 +345,7 @@ function Group({ kind, title, total, tone, children }: { kind: string; title: st
 }
 
 /** Una venta con los datos de la operación y, debajo, las compras de las que salen sus títulos. */
-function SaleCard({ sale: s }: { sale: SaleDetail }) {
+export function SaleCard({ sale: s }: { sale: SaleDetail }) {
   return (
     <article className="sale-card">
       <header className="sale-head">

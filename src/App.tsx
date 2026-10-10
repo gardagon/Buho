@@ -9,6 +9,7 @@ import { PriceDetail } from './ui/PriceDetail'
 import { usePortfolio } from './ui/hooks'
 import { useSwipeNav } from './ui/useSwipeNav'
 import { IconActivos, IconAjustes, IconCartera, IconMovimientos, IconSeguimiento } from './ui/icons'
+import { MovementDetail } from './ui/MovementDetail'
 import { MovementForm } from './ui/MovementForm'
 import { Activos } from './ui/screens/Activos'
 import { Ajustes } from './ui/screens/Ajustes'
@@ -33,6 +34,7 @@ function readRoute(): Route {
 
 type Editing =
   | { kind: 'movement'; movement?: Movement; assetId?: string }
+  | { kind: 'movementView'; movement: Movement }
   | { kind: 'asset'; asset?: Asset; watched?: boolean }
   | { kind: 'follow' }
   | { kind: 'prices'; asset: Asset }
@@ -105,7 +107,7 @@ export function App() {
             assets={assets}
             filter={assetFilter}
             onFilter={setAssetFilter}
-            onOpen={(m) => setEditing({ kind: 'movement', movement: m })}
+            onOpen={(m) => setEditing({ kind: 'movementView', movement: m })}
             onAdd={addMovement}
           />
         )}
@@ -133,6 +135,20 @@ export function App() {
         </button>
       )}
 
+      {editing?.kind === 'movementView' &&
+        (() => {
+          const m = movements.find((x) => x.id === editing.movement.id) ?? editing.movement
+          return (
+            <MovementDetail
+              movement={m}
+              asset={assets.find((a) => a.id === m.assetId)}
+              portfolio={portfolio}
+              movements={movements}
+              onClose={() => setEditing(null)}
+              onEdit={() => setEditing({ kind: 'movement', movement: m })}
+            />
+          )
+        })()}
       {editing?.kind === 'movement' && (
         <MovementForm
           movement={editing.movement}

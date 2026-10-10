@@ -705,3 +705,8 @@ main.slide-right { animation: enter-from-left 0.2s ease-out; }
 .block.dividendo .group-head { border-left-color: var(--tone-dividendo); }
 .group-body { display: grid; gap: 8px; margin-top: 8px; }
 .piece .lines dt, .piece .lines dd { font-size: 0.8rem; }
+
+/* ---------- Ficha de un movimiento ---------- */
+
+.movement-head { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.movement-block { display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--tone, var(--line)); border-radius: var(--r-sm); }
