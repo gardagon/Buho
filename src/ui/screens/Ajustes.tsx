@@ -8,6 +8,7 @@ import { exportSnapshot, mergeIntoLocal, wipeLocalData } from '../../data/repo'
 import { META } from '../../sync/sync'
 import { useSync } from '../../sync/SyncContext'
 import { Guide, type GuideId } from '../Guides'
+import { LastRunInfo } from '../prices'
 import { useToast } from '../Toast'
 
 const timeFmt = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
@@ -216,6 +217,7 @@ export function Ajustes() {
           El plan gratuito de Finnhub solo cubre valores de EE. UU. Para BME, Xetra, fondos y bonos, usa Yahoo (más abajo) o
           escribe un precio manual en cada activo.
         </p>
+        <LastRunInfo />
         <p className="small">
           <button type="button" className="link-btn" onClick={() => setGuide('finnhub')}>
             Guía: cómo conseguir la clave de Finnhub
@@ -353,7 +355,7 @@ export function Ajustes() {
       {guide && <Guide id={guide} onClose={() => setGuide(null)} />}
 
       <p className="small muted" style={{ marginTop: 24 }}>
-        Buho {__APP_VERSION__}. Sin servidores: tus datos solo están en tus dispositivos y en tu Google Drive.
+        Buho {__APP_VERSION__} · compilada {__BUILD_ID__}. Sin servidores: tus datos solo están en tus dispositivos y en tu Google Drive.
       </p>
     </>
   )

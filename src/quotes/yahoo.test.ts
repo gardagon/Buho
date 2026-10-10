@@ -133,6 +133,31 @@ describe('Finnhub con Yahoo de respaldo', () => {
     expect((await db.quotes.get(san))?.provider).toBe('yahoo')
   })
 
+  it('los proveedores van a la vez y, si los dos dan precio, gana Finnhub aunque Yahoo termine antes', async () => {
+    const apple = await saveAsset({ name: 'Apple', type: 'accion', currency: 'USD', ticker: 'AAPL', watched: true })
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    await setMeta(QUOTE_META.yahooProxy, PROXY)
+    let yahooDone = false
+    const slowFinnhub = async (url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u.includes('finnhub.io')) {
+        // Finnhub solo responde cuando Yahoo ya ha terminado: si fueran en serie, esto no acabaría nunca.
+        while (!yahooDone) await new Promise((r) => setTimeout(r, 5))
+        return json({ c: 190, pc: 188, t: 1_790_000_000 })
+      }
+      if (u.includes('/quote')) {
+        yahooDone = true
+        return json({ quotes: { AAPL: { price: 191, currency: 'USD', time: 1_790_000_100 } } })
+      }
+      return fetcher(url)
+    }
+    const report = await refreshQuotes(slowFinnhub)
+    expect(report.updated).toBe(1)
+    expect((await db.quotes.get(apple))?.provider).toBe('finnhub')
+    expect(report.timings?.totalMs).toBeGreaterThanOrEqual(0)
+    expect(report.timings?.yahooMs).toBeDefined()
+  })
+
   it('sin Finnhub, Yahoo cotiza todo', async () => {
     await saveAsset({ name: 'Santander', type: 'accion', currency: 'EUR', ticker: 'SAN.MC', watched: true })
     await setMeta(QUOTE_META.yahooProxy, PROXY)

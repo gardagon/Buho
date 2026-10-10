@@ -17,6 +17,15 @@ export interface RefreshReport {
   fxError?: string
   /** Días de histórico descargados en esta actualización. */
   historyDays: number
+  /** Cuánto tardó cada paso, para saber dónde se va el tiempo. */
+  timings?: RefreshTimings
+}
+
+export interface RefreshTimings {
+  totalMs: number
+  finnhubMs?: number
+  yahooMs?: number
+  fxMs?: number
 }
 
 /**
@@ -36,25 +45,56 @@ export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean
   const tracked = assets.filter((a) => held.has(a.id) || a.watched)
   const report: RefreshReport = { updated: 0, failed: [], usedProvider: false, historyDays: 0 }
 
-  // Finnhub primero (oficial); lo que no pueda cotizar pasa a Yahoo, si está configurado.
+  // Finnhub primero (oficial); lo que no pueda cotizar lo cubre Yahoo, si está configurado.
+  // Los proveedores se piden a la vez (el tiempo es el del más lento, no la suma) y los
+  // cambios de divisa también. Si dos dan el mismo valor, gana el de más prioridad.
   const providers: PriceProvider[] = []
   if (apiKey) providers.push(createFinnhubProvider(apiKey, fetcher))
   const proxyUrl = proxy ? normalizeProxyUrl(proxy) : null
   if (proxyUrl) providers.push(createYahooProvider(proxyUrl, fetcher))
 
+  const started = performance.now()
+  const timings: RefreshTimings = { totalMs: 0 }
+  const since = (t: number) => Math.round(performance.now() - t)
+
+  const fxPromise = (async () => {
+    const t = performance.now()
+    try {
+      const fx: FxRates = await fetchFxRates(
+        // USD siempre, para poder ver cualquier precio en euros y en dólares.
+        [...tracked.map((a) => a.currency), ...tracked.map((a) => a.manualPriceCurrency ?? a.currency), 'USD'],
+        fetcher,
+      )
+      if (Object.keys(fx.rates).length > 0) await saveFxRates(fx)
+      return undefined
+    } catch (e) {
+      return e instanceof Error && e.message !== 'Failed to fetch' ? e.message : 'Sin conexión para pedir los tipos de cambio.'
+    } finally {
+      timings.fxMs = since(t)
+    }
+  })()
+
+  const owner = new Map<string, number>() // activo → prioridad del proveedor que dio su precio
+  const results = await Promise.all(
+    providers.map(async (provider, i) => {
+      report.usedProvider = true
+      const t = performance.now()
+      const result = await provider.getQuotes(tracked.filter((a) => provider.supports(a)))
+      timings[provider.id === 'finnhub' ? 'finnhubMs' : 'yahooMs'] = since(t)
+      // Cada proveedor guarda lo suyo en cuanto termina, salvo lo que ya dio otro de más prioridad.
+      const mine = [...result.quotes.values()].filter((q) => (owner.get(q.assetId) ?? Infinity) > i)
+      for (const q of mine) owner.set(q.assetId, i)
+      await saveQuotes(mine)
+      await saveTodayPrices(mine)
+      return result
+    }),
+  )
+  report.updated = owner.size
+
+  // Si un valor falla en dos proveedores, se cuenta el último fallo, que es el más completo.
   const errors = new Map<string, string>()
-  let pending = tracked
-  for (const provider of providers) {
-    const result = await provider.getQuotes(pending.filter((a) => provider.supports(a)))
-    report.usedProvider = true
-    await saveQuotes([...result.quotes.values()])
-    await saveTodayPrices([...result.quotes.values()])
-    report.updated += result.quotes.size
-    for (const id of result.quotes.keys()) errors.delete(id)
-    // Si un valor falla en dos proveedores, se cuenta el último fallo, que es el más completo.
-    for (const [id, message] of result.errors) errors.set(id, message)
-    pending = pending.filter((a) => !result.quotes.has(a.id))
-  }
+  for (const result of results) for (const [id, message] of result.errors) errors.set(id, message)
+  for (const id of owner.keys()) errors.delete(id)
   for (const [id, message] of errors) {
     report.failed.push({ assetName: assets.find((a) => a.id === id)?.name ?? id, message })
   }
@@ -71,17 +111,11 @@ export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean
     }
   }
 
-  // Divisas de lo que se sigue y de lo que puede traer una cotización.
-  try {
-    const fx: FxRates = await fetchFxRates(
-      // USD siempre, para poder ver cualquier precio en euros y en dólares.
-      [...tracked.map((a) => a.currency), ...tracked.map((a) => a.manualPriceCurrency ?? a.currency), 'USD'],
-      fetcher,
-    )
-    if (Object.keys(fx.rates).length > 0) await saveFxRates(fx)
-  } catch (e) {
-    report.fxError = e instanceof Error && e.message !== 'Failed to fetch' ? e.message : 'Sin conexión para pedir los tipos de cambio.'
-  }
+  const fxError = await fxPromise
+  if (fxError) report.fxError = fxError
+  timings.totalMs = since(started)
+  report.timings = timings
+  await setMeta(QUOTE_META.lastRun, { at: new Date().toISOString(), updated: report.updated, failed: report.failed.length, ...timings })
 
   // Si no se consiguió nada, no se marca como actualizado.
   if (!report.fxError || report.updated > 0) await setMeta(QUOTE_META.refreshedAt, new Date().toISOString())
@@ -265,5 +299,8 @@ export async function refreshHistoryNow(fetcher?: Fetcher) {
   const assets = allAssets.filter((a) => !a.deleted)
   const live = movements.filter((m) => !m.deleted)
   const held = new Set(computePortfolio(assets, live).positions.map((p) => p.asset.id))
-  return refreshHistory(createYahooProvider(proxyUrl, fetcher), assets.filter((a) => held.has(a.id) || a.watched), live)
+  const t = performance.now()
+  const h = await refreshHistory(createYahooProvider(proxyUrl, fetcher), assets.filter((a) => held.has(a.id) || a.watched), live)
+  await setMeta(QUOTE_META.lastHistoryRun, { at: new Date().toISOString(), days: h.days, failed: h.errors.length, ms: Math.round(performance.now() - t) })
+  return h
 }

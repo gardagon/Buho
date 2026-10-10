@@ -228,7 +228,17 @@ function UpdateBanner() {
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
-  } = useRegisterSW()
+  } = useRegisterSW({
+    // Una app instalada puede pasar días abierta en segundo plano: busca versión nueva al volver a ella y cada media hora.
+    onRegisteredSW(_url, reg) {
+      if (!reg) return
+      const check = () => {
+        if (navigator.onLine) reg.update().catch(() => undefined)
+      }
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && check())
+      setInterval(check, 30 * 60_000)
+    },
+  })
   if (!needRefresh) return null
   return (
     <div className="toast" role="status">

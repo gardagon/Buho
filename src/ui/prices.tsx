@@ -1,3 +1,6 @@
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '../data/db'
+import { QUOTE_META } from '../data/repo'
 import type { PriceInfo } from '../domain/valuation'
 import { useQuotes } from '../quotes/QuotesContext'
 
@@ -37,6 +40,39 @@ export function RefreshLine() {
       <button className="btn small" onClick={() => void refresh()} disabled={refreshing}>
         {refreshing ? 'Actualizando…' : 'Actualizar precios'}
       </button>
+    </div>
+  )
+}
+
+const secs = (ms?: number) => (ms === undefined ? undefined : `${(ms / 1000).toFixed(1).replace('.', ',')} s`)
+
+/** Cuánto tardó la última actualización de precios y la última descarga de histórico: para ver dónde se va el tiempo. */
+export function LastRunInfo() {
+  const run = useLiveQuery(() => db.meta.get(QUOTE_META.lastRun).then((e) => e?.value as Record<string, number | string> | undefined))
+  const hist = useLiveQuery(() => db.meta.get(QUOTE_META.lastHistoryRun).then((e) => e?.value as Record<string, number | string> | undefined))
+  if (!run && !hist) return null
+  const parts = run
+    ? [
+        run.finnhubMs !== undefined && `Finnhub ${secs(run.finnhubMs as number)}`,
+        run.yahooMs !== undefined && `Yahoo ${secs(run.yahooMs as number)}`,
+        run.fxMs !== undefined && `cambios ${secs(run.fxMs as number)}`,
+      ].filter(Boolean)
+    : []
+  return (
+    <div className="small muted num">
+      {run && (
+        <p>
+          Última actualización ({dateTime.format(new Date(run.at as string))}): {run.updated as number} valores en {secs(run.totalMs as number)}
+          {parts.length > 0 && ` (${parts.join(' · ')})`}
+          {(run.failed as number) > 0 && `, ${run.failed} con error`}.
+        </p>
+      )}
+      {hist && (
+        <p>
+          Último histórico ({dateTime.format(new Date(hist.at as string))}): {hist.days as number} días en {secs(hist.ms as number)}
+          {(hist.failed as number) > 0 && `, ${hist.failed} con error`}.
+        </p>
+      )}
     </div>
   )
 }

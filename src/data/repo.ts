@@ -92,6 +92,9 @@ export const QUOTE_META = {
   historyTried: 'quotes.historyTried',
   /** Por activo: desde cuándo se pidió el histórico completo y hasta qué día llega lo descargado. */
   historyState: 'quotes.historyState',
+  /** Cuánto tardó la última actualización de precios y la última descarga de histórico (solo para diagnóstico). */
+  lastRun: 'quotes.lastRun',
+  lastHistoryRun: 'quotes.lastHistoryRun',
 } as const
 
 export async function saveQuotes(quotes: Quote[]) {

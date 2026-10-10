@@ -8,7 +8,11 @@ import pkg from './package.json' with { type: 'json' }
 // en un dominio propio o en local, sin tocar la configuración.
 export default defineConfig({
   base: './',
-  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    // Hora y commit de la compilación: así se ve en Ajustes qué versión tiene instalada cada dispositivo.
+    __BUILD_ID__: JSON.stringify(`${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC${process.env.GITHUB_SHA ? ' · ' + process.env.GITHUB_SHA.slice(0, 7) : ''}`),
+  },
   plugins: [
     react(),
     VitePWA({
