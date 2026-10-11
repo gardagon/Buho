@@ -160,4 +160,74 @@ describe('parseUserNumber', () => {
   ])('%s → %s', (input, out) => {
     expect(parseUserNumber(input)).toBe(out)
   })
+
+describe('traspaso entre fondos (art. 94 LIRPF)', () => {
+  const A = asset('A')
+  const B = asset('B')
+
+  it('no tributa y el fondo de destino hereda fecha y coste de los lotes de origen', () => {
+    // A: 100 part. a 10 € (1-ene-2024, coste 1.000) y 100 a 12 € (1-jun-2024, coste 1.200).
+    // Traspaso de 150 part. de A a B, que entrega 75 part. (el valor liquidativo de B es el doble).
+    // FIFO en A: salen 100 del primer lote (coste 1.000) y 50 del segundo (coste 600).
+    // B recibe 75 × 100/150 = 50 part. con coste 1.000 (20 €/part.) y 75 × 50/150 = 25 part. con coste 600 (24 €/part.).
+    const p = computePortfolio([A, B], [
+      mv({ assetId: 'A', type: 'compra', date: '2024-01-01', quantity: '100', price: '10' }),
+      mv({ assetId: 'A', type: 'compra', date: '2024-06-01', quantity: '100', price: '12' }),
+      mv({ assetId: 'A', type: 'traspaso', date: '2025-03-01', quantity: '150', toAssetId: 'B', toQuantity: '75' }),
+    ])
+    expect(p.issues).toEqual([])
+    expect(p.sales).toEqual([])
+    const a = p.positions.find((x) => x.asset.id === 'A')!
+    const b = p.positions.find((x) => x.asset.id === 'B')!
+    expect([a.quantity.toString(), a.costEur.toString()]).toEqual(['50', '600'])
+    expect([b.quantity.toString(), b.costEur.toString()]).toEqual(['75', '1600'])
+    expect(b.lots.map((l) => [l.date, l.quantity.toString(), l.unitCostEur.toString()])).toEqual([
+      ['2024-01-01', '50', '20'],
+      ['2024-06-01', '25', '24'],
+    ])
+  })
+
+  it('al vender desde el fondo de destino se usan las fechas y el coste heredados (FIFO)', () => {
+    // Continuación: vende 60 part. de B a 30 € el 1-jul-2025. FIFO: 50 a 20 € (coste 1.000) y 10 a 24 € (coste 240).
+    // Ingreso 60 × 30 = 1.800; coste 1.240; ganancia 560. Quedan 15 part. con coste 15 × 24 = 360.
+    const p = computePortfolio([A, B], [
+      mv({ assetId: 'A', type: 'compra', date: '2024-01-01', quantity: '100', price: '10' }),
+      mv({ assetId: 'A', type: 'compra', date: '2024-06-01', quantity: '100', price: '12' }),
+      mv({ assetId: 'A', type: 'traspaso', date: '2025-03-01', quantity: '150', toAssetId: 'B', toQuantity: '75' }),
+      mv({ assetId: 'B', type: 'venta', date: '2025-07-01', quantity: '60', price: '30' }),
+    ])
+    const sale = p.sales[0]
+    expect(sale.proceedsEur.toString()).toBe('1800')
+    expect(sale.costEur.toString()).toBe('1240')
+    expect(sale.gainEur.toString()).toBe('560')
+    expect(sale.matched.map((m) => [m.buyDate, m.quantity.toString()])).toEqual([['2024-01-01', '50'], ['2024-06-01', '10']])
+    const b = p.positions.find((x) => x.asset.id === 'B')!
+    expect([b.quantity.toString(), b.costEur.toString()]).toEqual(['15', '360'])
+  })
+
+  it('los lotes heredados se ordenan por su fecha original frente a compras propias del destino', () => {
+    // B ya tenía 10 part. compradas en 2024-09-01 a 50 €. Llegan por traspaso 10 part. de A compradas en 2024-01-01 (coste 100).
+    // Al vender 10 part. de B salen primero las heredadas (más antiguas): coste 100, no 500.
+    const p = computePortfolio([A, B], [
+      mv({ assetId: 'A', type: 'compra', date: '2024-01-01', quantity: '10', price: '10' }),
+      mv({ assetId: 'B', type: 'compra', date: '2024-09-01', quantity: '10', price: '50' }),
+      mv({ assetId: 'A', type: 'traspaso', date: '2025-01-01', quantity: '10', toAssetId: 'B', toQuantity: '10' }),
+      mv({ assetId: 'B', type: 'venta', date: '2025-02-01', quantity: '10', price: '60' }),
+    ])
+    expect(p.sales[0].costEur.toString()).toBe('100')
+    expect(p.sales[0].gainEur.toString()).toBe('500')
+  })
+
+  it('avisa si se traspasa más de lo que hay o falta el fondo de destino', () => {
+    const p = computePortfolio([A, B], [
+      mv({ assetId: 'A', type: 'compra', date: '2024-01-01', quantity: '10', price: '10' }),
+      mv({ assetId: 'A', type: 'traspaso', date: '2025-01-01', quantity: '15', toAssetId: 'B', toQuantity: '15' }),
+      mv({ assetId: 'A', type: 'traspaso', date: '2025-01-02', quantity: '1', toQuantity: '1' }),
+    ])
+    expect(p.issues.map((i) => i.message)).toEqual([
+      'Traspasas 15 participaciones pero solo tenías 10. Revisa las compras anteriores.',
+      'El traspaso necesita un fondo de destino distinto del de origen.',
+    ])
+  })
+})
 })

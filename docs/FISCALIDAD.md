@@ -40,6 +40,11 @@ Cómo se aplica (simplificado):
 
 Límites: no distingue valores homogéneos por ISIN distinto (se agrupa por activo), ni trata las cadenas de recompras con pérdidas sucesivas más allá de lo descrito.
 
+### Traspaso entre fondos (art. 94 LIRPF)
+Movimiento «Traspaso»: no tributa. Las participaciones salen del fondo de origen por FIFO y el fondo de destino **hereda la fecha de compra y el coste** de cada lote (el coste de cada lote se reparte entre las participaciones recibidas en proporción). Al vender desde el destino se usan esas fechas y costes, así que el FIFO del destino sigue la fecha original y no la del traspaso. Se apunta con las participaciones que salen y las que entran.
+
+Límites: no se ha contrastado con un caso real; solo vale entre fondos ya dados de alta; la regla de los dos meses no sigue los lotes entre fondos; el rendimiento por periodos de la ficha ignora el valor movido por el traspaso dentro del periodo.
+
 ### Estimación de la cuota del ahorro (`src/domain/tax.ts`)
 Aproximación de lo que se pagaría por la base imponible del ahorro de cada año, en territorio común. Se muestra en Cartera → Histórico, dentro de cada año, con el cálculo a la vista, y en una hoja del Excel.
 
@@ -82,9 +87,8 @@ Casos de prueba calculados a mano en `src/domain/tax.test.ts`.
 ## Pendiente (orden sugerido)
 
 1. **Splits y contrasplits:** cambian la cantidad y el coste unitario de los lotes sin alterar el coste total ni las fechas. Nuevo tipo de movimiento.
-2. **Traspasos entre fondos de inversión** (art. 94 LIRPF): no tributan; el fondo de destino hereda las fechas y costes de los lotes del de origen. Nuevo tipo de movimiento.
-3. **Derechos de suscripción y scrip dividends:** desde 2017 la venta de derechos de valores cotizados tributa como ganancia patrimonial con retención.
-4. **Informe para la declaración:** por año, ventas con fecha y valor de adquisición y transmisión por lote, como las pide el modelo 100.
+2. **Derechos de suscripción y scrip dividends:** desde 2017 la venta de derechos de valores cotizados tributa como ganancia patrimonial con retención.
+3. **Informe para la declaración:** por año, ventas con fecha y valor de adquisición y transmisión por lote, como las pide el modelo 100.
 
 ## Casos de prueba de referencia
 

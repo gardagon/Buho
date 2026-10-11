@@ -30,7 +30,7 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
 
   const groups = useMemo(() => {
     const list = movements
-      .filter((m) => !filter || m.assetId === filter)
+      .filter((m) => !filter || m.assetId === filter || m.toAssetId === filter)
       .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1))
     const map = new Map<string, Movement[]>()
     for (const m of list) map.set(m.date, [...(map.get(m.date) ?? []), m])
@@ -70,6 +70,27 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
             <ul className="rows">
               {ms.map((m) => {
                 const a = assetById.get(m.assetId)
+                if (m.type === 'traspaso') {
+                  const to = assetById.get(m.toAssetId ?? '')
+                  return (
+                    <li key={m.id}>
+                      <button className="row" onClick={() => onOpen(m)}>
+                        <span className="row-title">
+                          {a?.name ?? 'Activo eliminado'} → {to?.name ?? 'Activo eliminado'}
+                        </span>
+                        <span className="row-end num">
+                          <strong>
+                            {formatQuantity(m.quantity ?? '0')} → {formatQuantity(m.toQuantity ?? '0')}
+                          </strong>
+                        </span>
+                        <span className="row-sub num">
+                          <span className="tag traspaso">{MOVEMENT_TYPES.traspaso}</span> Sin tributar
+                        </span>
+                        <span className="row-sub row-end num">{m.account ?? 'participaciones'}</span>
+                      </button>
+                    </li>
+                  )
+                }
                 const net = netAmount(m)
                 const check = checks.get(m.id)
                 // Con el total real en EUR, el importe ya está en euros.

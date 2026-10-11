@@ -107,6 +107,7 @@ export const MOVEMENT_TYPES = {
   venta: 'Venta',
   dividendo: 'Dividendo',
   cupon: 'Cupón',
+  traspaso: 'Traspaso',
 } as const
 
 export type MovementType = keyof typeof MOVEMENT_TYPES
@@ -117,8 +118,11 @@ export interface Movement extends SyncedRecord {
   assetId: string
   type: MovementType
   date: ISODate
-  /** Compra/venta: títulos o participaciones. */
+  /** Compra/venta: títulos o participaciones. Traspaso: participaciones que salen del fondo de origen. */
   quantity?: DecimalString
+  /** Traspaso entre fondos (art. 94 LIRPF): el fondo de destino y las participaciones que recibe. No tributa. */
+  toAssetId?: string
+  toQuantity?: DecimalString
   /** Compra/venta: precio unitario en la divisa del movimiento. */
   price?: DecimalString
   /** Dividendo/cupón: importe bruto cobrado, en la divisa del movimiento. */

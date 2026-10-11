@@ -149,6 +149,7 @@ export function App() {
             <MovementDetail
               movement={m}
               asset={assets.find((a) => a.id === m.assetId)}
+              toAsset={assets.find((a) => a.id === m.toAssetId)}
               portfolio={portfolio}
               movements={movements}
               onClose={() => setEditing(null)}

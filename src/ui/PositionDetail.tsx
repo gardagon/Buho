@@ -40,14 +40,14 @@ export function PositionDetail({ position, portfolio, movements, onClose, onOpen
   const points = useLiveQuery(() => db.prices.where('assetId').equals(asset.id).toArray(), [asset.id]) ?? EMPTY_POINTS
   const days = useLiveQuery(() => db.quoteDays.where('assetId').equals(asset.id).toArray(), [asset.id]) ?? EMPTY_DAYS
 
-  const mine = useMemo(() => movements.filter((m) => !m.deleted && m.assetId === asset.id), [movements, asset.id])
+  const mine = useMemo(() => movements.filter((m) => !m.deleted && (m.assetId === asset.id || m.toAssetId === asset.id)), [movements, asset.id])
   const row = useMemo(() => valuePositions([position], quotes, fx).rows[0], [position, quotes, fx])
   const prices = useMemo(() => knownPrices(mine, points, days, fx), [mine, points, days, fx])
   const periods = useMemo(
-    () => periodPerformance({ movements: mine, today: today(), valueNowEur: row.valueEur, prices }),
+    () => periodPerformance({ movements: mine, assetId: asset.id, today: today(), valueNowEur: row.valueEur, prices }),
     [mine, row.valueEur, prices],
   )
-  const lots = useMemo(() => lotDetails(portfolio, asset.id, mine), [portfolio, asset.id, mine])
+  const lots = useMemo(() => lotDetails(portfolio, asset.id, movements), [portfolio, asset.id, movements])
   const other = row.price && counterPrice(row.price, fx)
   const unitNowEur = row.valueEur ? row.valueEur.div(position.quantity) : undefined
 
@@ -196,18 +196,26 @@ export function PositionDetail({ position, portfolio, movements, onClose, onOpen
               return (
                 <article key={l.buy.id} className="lot">
                   <header className="lot-head">
-                    <strong>Compra del {day(l.buy.date)}</strong>
+                    <strong>{l.inherited ? 'Heredado por traspaso · compra del ' : 'Compra del '}{day(l.buy.date)}</strong>
                     <span className="small muted">
                       {l.status === 'abierta' ? 'Abierta' : l.status === 'parcial' ? 'Vendida en parte' : 'Vendida'}
                     </span>
                   </header>
                   <p className="num">
-                    {formatQuantity(l.quantity)} × {formatMoney(l.buy.price ?? '0', l.buy.currency)} ={' '}
-                    <strong>{formatMoney(l.costEur)}</strong>
+                    {l.inherited ? (
+                      <>
+                        {formatQuantity(l.quantity)} participaciones · coste heredado <strong>{formatMoney(l.costEur)}</strong>
+                      </>
+                    ) : (
+                      <>
+                        {formatQuantity(l.quantity)} × {formatMoney(l.buy.price ?? '0', l.buy.currency)} ={' '}
+                        <strong>{formatMoney(l.costEur)}</strong>
+                      </>
+                    )}
                   </p>
                   <p className="small muted num">
                     Precio medio con comisiones {formatMoney(l.unitCostEur)}
-                    {l.buy.fees !== '0' && ` · comisiones ${formatMoney(l.buy.fees, l.buy.currency)}`}
+                    {!l.inherited && l.buy.fees !== '0' && ` · comisiones ${formatMoney(l.buy.fees, l.buy.currency)}`}
                     {l.buy.account && ` · ${l.buy.account}`}
                   </p>
                   {l.slices.map((s) => (

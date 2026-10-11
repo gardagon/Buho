@@ -31,6 +31,7 @@ const ADDED: Record<MovementType, string> = {
   venta: 'Venta añadida',
   dividendo: 'Dividendo añadido',
   cupon: 'Cupón añadido',
+  traspaso: 'Traspaso añadido',
 }
 
 const KIND: Record<MovementType, { noun: string; article: 'Nueva' | 'Nuevo' }> = {
@@ -38,6 +39,7 @@ const KIND: Record<MovementType, { noun: string; article: 'Nueva' | 'Nuevo' }> =
   venta: { noun: 'venta', article: 'Nueva' },
   dividendo: { noun: 'dividendo', article: 'Nuevo' },
   cupon: { noun: 'cupón', article: 'Nuevo' },
+  traspaso: { noun: 'traspaso', article: 'Nuevo' },
 }
 
 const dayFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' })
@@ -66,6 +68,9 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   // Al editar, el total guardado manda sobre el cálculo: si cambias cantidad, precio, cambio o comisiones sin tocar
   // el total, se recalcula en vez de dejar el antiguo (que haría que el cambio no se notara en el coste).
   const [totalTouched, setTotalTouched] = useState(false)
+  // Traspaso entre fondos: fondo de destino y participaciones que recibe.
+  const [toAssetId, setToAssetId] = useState(movement?.toAssetId ?? '')
+  const [toQuantity, setToQuantity] = useState(toInputValue(movement?.toQuantity))
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(movement?.currency ?? null)
   // Dividendos y cupones: retención en origen y en España, cada una con su divisa, y el neto real ingresado.
   const hadSplit = movement?.withholdingOrigin !== undefined || movement?.withholdingDest !== undefined
@@ -88,7 +93,8 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const [ecb, setEcb] = useState<{ key: string; rate: string; date: string } | null>(null)
 
   const asset = assets.find((a) => a.id === assetId)
-  const currency = currencyChoice ?? asset?.currency ?? 'EUR'
+  const transfer = type === 'traspaso'
+  const currency = transfer ? 'EUR' : (currencyChoice ?? asset?.currency ?? 'EUR')
   const currencyOptions = [...new Set([asset?.currency ?? 'EUR', 'EUR', 'USD'])]
   const needsFx = currency !== 'EUR'
   const trade = isTrade(type)
@@ -114,7 +120,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
 
   // Títulos disponibles para vender, sin contar este mismo movimiento.
   const available = useMemo(() => {
-    if (type !== 'venta' || !asset) return null
+    if ((type !== 'venta' && type !== 'traspaso') || !asset) return null
     const others = movements.filter((m) => m.id !== movement?.id && m.assetId === asset.id && m.date <= date)
     const p = computePortfolio([asset], others)
     return p.positions[0]?.quantity ?? d(0)
@@ -123,6 +129,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const q = parseUserNumber(quantity)
   const pr = price.trim() === '' ? undefined : parseUserNumber(price)
   const am = parseUserNumber(amount)
+  const toQ = toQuantity.trim() === '' ? undefined : parseUserNumber(toQuantity)
   const feesRaw = fees.trim() === '' ? undefined : parseUserNumber(fees)
   const totalRaw = totalPaid.trim() === '' ? undefined : parseUserNumber(totalPaid)
   const fe = feesRaw === undefined ? '0' : feesRaw
@@ -152,14 +159,16 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const check =
     trade && t?.price ? checkTradePrice({ type, price: t.price.toString(), currency } as Movement, day) : null
 
-  const fx = trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? ecbNow?.rate) : '1'
+  const fx = transfer ? '1' : trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? ecbNow?.rate) : '1'
 
   const errors: Record<string, boolean> = {
     asset: !asset,
     date: !/^\d{4}-\d{2}-\d{2}$/.test(date),
-    quantity: trade && (q === null || d(q).lte(0)),
+    quantity: (trade || transfer) && (q === null || d(q).lte(0)),
+    toAsset: transfer && (!toAssetId || toAssetId === assetId || !assets.some((a) => a.id === toAssetId)),
+    toQuantity: transfer && (toQ === undefined || toQ === null || d(toQ).lte(0)),
     price: trade && (pr === null || !t!.price || t!.price.lt(0)),
-    amount: !trade && (am === null || d(am).lte(0)),
+    amount: !trade && !transfer && (am === null || d(am).lte(0)),
     fees: feesRaw === null || (feesRaw !== undefined && d(feesRaw).lt(0)),
     total: trade && (totalRaw === null || (totalRaw !== undefined && d(totalRaw).lte(0)) || !!t!.inconsistent),
     withholding: wh === null || d(wh).lt(0),
@@ -177,7 +186,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   // Dividendos y cupones: el cálculo es el mismo que se usa en toda la app.
   const split = whOrigin.trim() !== '' || whDest.trim() !== ''
   const draft: Movement | null =
-    valid && !trade
+    valid && !trade && !transfer
       ? {
           id: '', createdAt: '', updatedAt: '', assetId, type, date, amount: am!, currency, fxRate: fx!, fees: fe!,
           withholding: split ? '0' : wh!,
@@ -217,7 +226,22 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
     const feesStored = trade ? (t!.feesEur ?? d(0)).mul(d(fx!)).toDecimalPlaces(8).toString() : fe!
     try {
       await saveMovement(
-        {
+        transfer
+          ? {
+              assetId: asset.id,
+              type,
+              date,
+              quantity: q!,
+              toAssetId,
+              toQuantity: toQ!,
+              currency: 'EUR',
+              fxRate: '1',
+              fees: '0',
+              withholding: '0',
+              account: account.trim() || undefined,
+              note: note.trim() || undefined,
+            }
+          : {
           assetId: asset.id,
           type,
           date,
@@ -317,7 +341,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
       </div>
 
       <Field
-        label="Activo"
+        label={transfer ? 'Fondo de origen' : 'Activo'}
         hint={
           <button type="button" className="btn ghost small" style={{ padding: 0 }} onClick={() => setCreatingAsset(true)}>
             Añadir un activo nuevo
@@ -338,11 +362,42 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
         </select>
       </Field>
 
+      {transfer && (
+        <Field label="Fondo de destino" hint="Si no está, dalo de alta primero en Activos">
+          <select value={toAssetId} onChange={(e) => setToAssetId(e.target.value)} aria-invalid={bad('toAsset')}>
+            <option value="">Elige el fondo de destino</option>
+            {assets
+              .filter((a) => a.id !== assetId)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                  {a.ticker ? ` (${a.ticker})` : ''}
+                </option>
+              ))}
+          </select>
+        </Field>
+      )}
+
       <Field label="Fecha">
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-invalid={bad('date')} />
       </Field>
 
-      {trade ? (
+      {transfer ? (
+        <>
+          <div className="grid-2">
+            <Field label="Participaciones que salen" hint={available ? `Tienes ${formatQuantity(available)} en esa fecha` : undefined}>
+              <input inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={bad('quantity')} />
+            </Field>
+            <Field label="Participaciones que entran" hint="Las que recibes en el fondo de destino">
+              <input inputMode="decimal" value={toQuantity} onChange={(e) => setToQuantity(e.target.value)} aria-invalid={bad('toQuantity')} />
+            </Field>
+          </div>
+          <p className="notice small" role="status">
+            El traspaso no tributa: el fondo de destino hereda la fecha de compra y el coste de las participaciones que salen (art. 94 LIRPF).
+            No es una venta, así que no genera plusvalía ni minusvalía.
+          </p>
+        </>
+      ) : trade ? (
         <>
           <div className="grid-2">
             <Field
@@ -574,8 +629,8 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
           </strong>
         </div>
       )}
-      {type === 'venta' && available && q && d(q).gt(available) && (
-        <p className="error-text">Vendes más títulos de los que tenías en esa fecha. Revisa la cantidad o añade antes la compra.</p>
+      {(type === 'venta' || transfer) && available && q && d(q).gt(available) && (
+        <p className="error-text">{transfer ? 'Traspasas' : 'Vendes'} más {transfer ? 'participaciones' : 'títulos'} de los que tenías en esa fecha. Revisa la cantidad o añade antes la compra.</p>
       )}
 
       <Field label="Cuenta o bróker">

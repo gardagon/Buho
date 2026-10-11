@@ -109,7 +109,7 @@ export function sortMovements(movements: Movement[]): Movement[] {
   return [...movements].sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1
     // Mismo día: compras antes que ventas, para no dejar ventas "en descubierto".
-    const rank = (m: Movement) => (m.type === 'compra' ? 0 : m.type === 'venta' ? 2 : 1)
+    const rank = (m: Movement) => (m.type === 'compra' ? 0 : m.type === 'venta' ? 3 : m.type === 'traspaso' ? 2 : 1)
     if (rank(a) !== rank(b)) return rank(a) - rank(b)
     return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0
   })
@@ -187,6 +187,58 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
         gainEur: proceedsEur.minus(costEur),
         matched,
       })
+    } else if (m.type === 'traspaso') {
+      // Traspaso entre fondos (art. 94 LIRPF): no tributa. Las participaciones salen del fondo de origen por FIFO
+      // y el de destino hereda su fecha de compra y su coste, repartido entre las participaciones recibidas.
+      const dest = assetById.get(m.toAssetId ?? '')
+      const qty = d(m.quantity)
+      const newQty = d(m.toQuantity)
+      if (!dest || dest.id === asset.id) {
+        issues.push({ movementId: m.id, assetId: asset.id, message: 'El traspaso necesita un fondo de destino distinto del de origen.' })
+        continue
+      }
+      if (qty.lte(0) || newQty.lte(0)) {
+        issues.push({ movementId: m.id, assetId: asset.id, message: 'El traspaso necesita las participaciones que salen y las que entran.' })
+        continue
+      }
+      let remaining = qty
+      const taken: { lot: Lot; take: Decimal }[] = []
+      while (remaining.gt(0) && lots.length > 0) {
+        const lot = lots[0]
+        const take = Decimal.min(lot.quantity, remaining)
+        taken.push({ lot: { ...lot }, take })
+        lot.quantity = lot.quantity.minus(take)
+        remaining = remaining.minus(take)
+        if (lot.quantity.lte(0)) lots.shift()
+      }
+      if (remaining.gt(0)) {
+        issues.push({
+          movementId: m.id,
+          assetId: asset.id,
+          message: `Traspasas ${qty.toString()} participaciones pero solo tenías ${qty.minus(remaining).toString()}. Revisa las compras anteriores.`,
+        })
+      }
+      const movedQty = qty.minus(remaining)
+      if (movedQty.gt(0)) {
+        const destLots = lotsByAsset.get(dest.id) ?? []
+        lotsByAsset.set(dest.id, destLots)
+        for (const { lot, take } of taken) {
+          // Se multiplica antes de dividir para no arrastrar redondeos.
+          const received = newQty.mul(take).div(movedQty)
+          const inherited: Lot = {
+            movementId: lot.movementId,
+            date: lot.date,
+            quantity: received,
+            unitCostEur: lot.unitCostEur.mul(take).div(received),
+            unitCost: lot.unitCost.mul(take).div(received),
+            currency: lot.currency,
+          }
+          // El FIFO del fondo de destino sigue la fecha de compra original, no la del traspaso.
+          let at = destLots.length
+          while (at > 0 && destLots[at - 1].date > inherited.date) at--
+          destLots.splice(at, 0, inherited)
+        }
+      }
     } else {
       const b = incomeBreakdown(m)
       income.push({

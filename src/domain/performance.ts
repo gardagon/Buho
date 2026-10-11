@@ -87,7 +87,10 @@ export interface PeriodResult {
  * dinero invertido en ese tiempo, sin agrupar ventas.
  */
 export function periodPerformance(args: {
+  /** Movimientos del activo (y los traspasos que lo mueven). */
   movements: Movement[]
+  /** Activo del que se calcula, para saber hacia dónde va cada traspaso. */
+  assetId?: string
   /** Fecha de hoy, AAAA-MM-DD. */
   today: string
   /** Valor actual de los títulos que se tienen, en EUR. */
@@ -105,10 +108,15 @@ export function periodPerformance(args: {
       if (m.date <= date) {
         if (m.type === 'compra') shares = shares.plus(d(m.quantity))
         else if (m.type === 'venta') shares = shares.minus(d(m.quantity))
+        else if (m.type === 'traspaso') {
+          // Un traspaso mueve participaciones entre dos fondos sin comprar ni vender.
+          if (m.assetId === args.assetId) shares = shares.minus(d(m.quantity))
+          else if (m.toAssetId === args.assetId) shares = shares.plus(d(m.toQuantity))
+        }
       } else if (m.date <= args.today) {
         if (m.type === 'compra') bought = bought.plus(buyCostEur(m))
         else if (m.type === 'venta') sold = sold.plus(sellProceedsEur(m))
-        else income = income.plus(incomeBreakdown(m).netEur)
+        else if (m.type === 'dividendo' || m.type === 'cupon') income = income.plus(incomeBreakdown(m).netEur)
       }
     }
     const base: PeriodResult = {

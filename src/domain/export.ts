@@ -118,7 +118,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
     [{ v: 'Divisas: los importes en euros usan el importe real en euros si se indicó, o el cambio de la fecha de cada operación.', style: 'texto' }],
     [{ v: 'Las columnas de resultado son fórmulas: puedes cambiar un dato y ver cómo se recalcula.', style: 'texto' }],
     [],
-    [{ v: 'Aviso: es orientativo. Aplica la regla de los dos meses de forma simplificada (ver docs/FISCALIDAD.md); no contempla los traspasos entre fondos ni los derechos de suscripción. Compruébalo antes de usarlo en la declaración.', style: 'texto' }],
+    [{ v: 'Aviso: es orientativo. Aplica la regla de los dos meses de forma simplificada (ver docs/FISCALIDAD.md); los traspasos entre fondos no están contrastados con un caso real y no se contemplan los derechos de suscripción. Compruébalo antes de usarlo en la declaración.', style: 'texto' }],
   ]
 
   const taxRows: Cell[][] = tax

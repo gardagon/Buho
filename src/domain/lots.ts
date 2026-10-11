@@ -30,6 +30,8 @@ export interface LotDetail {
   /** Beneficio ya realizado con las ventas de esta compra. */
   realizedProfitEur: Decimal
   status: 'abierta' | 'parcial' | 'vendida'
+  /** Lote heredado de otro fondo por un traspaso: `buy` es la compra original, en el fondo de origen. */
+  inherited?: boolean
 }
 
 /**
@@ -41,9 +43,11 @@ export interface LotDetail {
 export function lotDetails(portfolio: Portfolio, assetId: string, movements: Movement[]): LotDetail[] {
   const mine = movements.filter((m) => !m.deleted && m.assetId === assetId)
   const byId = new Map(mine.map((m) => [m.id, m]))
-  const open = new Map(
-    (portfolio.positions.find((p) => p.asset.id === assetId)?.lots ?? []).map((l) => [l.movementId, l.quantity]),
-  )
+  const everyById = new Map(movements.filter((m) => !m.deleted).map((m) => [m.id, m]))
+  const positionLots = portfolio.positions.find((p) => p.asset.id === assetId)?.lots ?? []
+  // Un mismo lote original puede estar repartido en varios lotes del fondo de destino: se suman.
+  const open = new Map<string, Decimal>()
+  for (const l of positionLots) open.set(l.movementId, (open.get(l.movementId) ?? new Decimal(0)).plus(l.quantity))
 
   const slices = new Map<string, LotSlice[]>()
   for (const sale of portfolio.sales.filter((s) => s.asset.id === assetId)) {
@@ -67,7 +71,31 @@ export function lotDetails(portfolio: Portfolio, assetId: string, movements: Mov
     }
   }
 
-  return sortMovements(mine.filter((m) => m.type === 'compra' && d(m.quantity).gt(0))).map((buy) => {
+  const own = sortMovements(mine.filter((m) => m.type === 'compra' && d(m.quantity).gt(0)))
+  const ownIds = new Set(own.map((m) => m.id))
+  // Lotes que llegaron por traspaso desde otro fondo: se enseñan con su compra original.
+  const inherited: LotDetail[] = []
+  for (const id of new Set([...open.keys(), ...slices.keys()])) {
+    const buy = everyById.get(id)
+    if (ownIds.has(id) || !buy) continue
+    const mySlices = (slices.get(id) ?? []).sort((a, b) => (a.date < b.date ? -1 : 1))
+    const remaining = open.get(id) ?? new Decimal(0)
+    const quantity = mySlices.reduce((n, x) => n.plus(x.quantity), remaining)
+    const unitCostEur = positionLots.find((l) => l.movementId === id)?.unitCostEur ?? mySlices[0].costEur.div(mySlices[0].quantity)
+    inherited.push({
+      buy,
+      quantity,
+      costEur: unitCostEur.mul(quantity),
+      unitCostEur,
+      remaining,
+      slices: mySlices,
+      realizedProfitEur: mySlices.reduce((sum, x) => sum.plus(x.profitEur), new Decimal(0)),
+      status: remaining.gte(quantity) ? 'abierta' : remaining.gt(0) ? 'parcial' : 'vendida',
+      inherited: true,
+    })
+  }
+
+  const ownDetails = own.map((buy): LotDetail => {
     const quantity = d(buy.quantity)
     const costEur = buyCostEur(buy)
     const mySlices = (slices.get(buy.id) ?? []).sort((a, b) => (a.date < b.date ? -1 : 1))
@@ -83,4 +111,5 @@ export function lotDetails(portfolio: Portfolio, assetId: string, movements: Mov
       status: remaining.gte(quantity) ? 'abierta' : remaining.gt(0) ? 'parcial' : 'vendida',
     }
   })
+  return [...ownDetails, ...inherited].sort((a, b) => (a.buy.date < b.buy.date ? -1 : a.buy.date > b.buy.date ? 1 : 0))
 }

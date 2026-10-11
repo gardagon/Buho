@@ -12,6 +12,8 @@ const dateFmt = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeri
 interface Props {
   movement: Movement
   asset?: Asset
+  /** Traspaso: el fondo de destino. */
+  toAsset?: Asset
   portfolio: Portfolio
   movements: Movement[]
   onClose: () => void
@@ -23,7 +25,7 @@ interface Props {
  * compras de las que salen sus títulos (FIFO). Para cambiar algo hay que pulsar
  * «Editar movimiento»: así no se abre el formulario por un toque sin querer.
  */
-export function MovementDetail({ movement: m, asset, portfolio, movements, onClose, onEdit }: Props) {
+export function MovementDetail({ movement: m, asset, toAsset, portfolio, movements, onClose, onEdit }: Props) {
   const report = useMemo(() => yearReport(portfolio, movements, m.date.slice(0, 4)), [portfolio, movements, m.date])
   const assetYear = report.assets.find((a) => a.asset.id === m.assetId)
   const sale = m.type === 'venta' ? assetYear?.sales.find((s) => s.movementId === m.id) : undefined
@@ -35,6 +37,13 @@ export function MovementDetail({ movement: m, asset, portfolio, movements, onClo
     rows.push(['Cantidad', formatQuantity(m.quantity ?? '0')], ['Precio', formatMoney(m.price ?? '0', m.currency)])
     if (m.currency !== 'EUR') rows.push(['Cambio', formatQuantity(m.fxRate)])
     rows.push(['Importe', formatMoney(gross, m.currency)], ['Comisiones', formatMoney(m.fees, m.currency)], ['Total pagado', formatMoney(total)])
+  } else if (m.type === 'traspaso') {
+    rows.push(
+      ['Fondo de origen', asset?.name ?? 'Activo eliminado'],
+      ['Fondo de destino', toAsset?.name ?? 'Activo eliminado'],
+      ['Participaciones que salen', formatQuantity(m.quantity ?? '0')],
+      ['Participaciones que entran', formatQuantity(m.toQuantity ?? '0')],
+    )
   } else if (!sale) {
     const b = incomeBreakdown(m)
     const split = m.withholdingOrigin !== undefined || m.withholdingDest !== undefined
@@ -80,9 +89,16 @@ export function MovementDetail({ movement: m, asset, portfolio, movements, onClo
       {sale ? (
         <SaleCard sale={sale} />
       ) : (
-        <section className="block movement-block">
-          <Lines rows={rows} />
-        </section>
+        <>
+          <section className="block movement-block">
+            <Lines rows={rows} />
+          </section>
+          {m.type === 'traspaso' && (
+            <p className="small muted" style={{ margin: 0 }}>
+              No tributa: el fondo de destino hereda la fecha de compra y el coste de las participaciones traspasadas (art. 94 LIRPF).
+            </p>
+          )}
+        </>
       )}
 
       {(m.account || m.note) && (

@@ -64,7 +64,7 @@ export function Historico({ portfolio, movements }: Props) {
         })}
       </ul>
       <p className="small muted" style={{ marginTop: 8 }}>
-        Orientativo. Aplica la regla de los dos meses de forma simplificada y aún no los traspasos entre fondos; compruébalo antes de usarlo en la declaración.
+        Orientativo. Aplica la regla de los dos meses de forma simplificada y los traspasos entre fondos sin contrastar con un caso real; compruébalo antes de usarlo en la declaración.
       </p>
     </section>
   )
