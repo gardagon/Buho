@@ -7,6 +7,7 @@ import { summarizeByYear, type Portfolio } from '../../domain/portfolio'
 import { yearReport, yearsWithActivity } from '../../domain/sales'
 import { ASSET_TYPES, type AssetType, type Movement } from '../../domain/types'
 import { Historico } from '../Historico'
+import { LossWindowsNotice, type OpenLossWindow } from '../LossWindows'
 import { Decimal } from '../../domain/numbers'
 
 export const TYPE_COLORS: Record<AssetType, string> = {
@@ -20,13 +21,14 @@ export const TYPE_COLORS: Record<AssetType, string> = {
 }
 
 interface Props {
+  lossWindows: OpenLossWindow[]
   portfolio: Portfolio
   movements: Movement[]
   onAdd: () => void
   onOpenAsset: (assetId: string) => void
 }
 
-export function Cartera({ portfolio, movements, onAdd, onOpenAsset }: Props) {
+export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset }: Props) {
   const { positions, totalCostEur, issues } = portfolio
   const years = useMemo(() => summarizeByYear(portfolio), [portfolio])
   const yearsList = useMemo(() => yearsWithActivity(portfolio), [portfolio])
@@ -110,6 +112,8 @@ export function Cartera({ portfolio, movements, onAdd, onOpenAsset }: Props) {
         </p>
       )}
 
+
+      <LossWindowsNotice windows={lossWindows} />
 
       {issues.length > 0 && (
         <div className="notice" role="alert">

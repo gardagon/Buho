@@ -118,7 +118,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
     [{ v: 'Divisas: los importes en euros usan el importe real en euros si se indicó, o el cambio de la fecha de cada operación.', style: 'texto' }],
     [{ v: 'Las columnas de resultado son fórmulas: puedes cambiar un dato y ver cómo se recalcula.', style: 'texto' }],
     [],
-    [{ v: 'Aviso: es orientativo. No aplica la regla de los dos meses, los traspasos entre fondos ni los derechos de suscripción. Compruébalo antes de usarlo en la declaración.', style: 'texto' }],
+    [{ v: 'Aviso: es orientativo. Aplica la regla de los dos meses de forma simplificada (ver docs/FISCALIDAD.md); no contempla los traspasos entre fondos ni los derechos de suscripción. Compruébalo antes de usarlo en la declaración.', style: 'texto' }],
   ]
 
   const taxRows: Cell[][] = tax
@@ -126,6 +126,8 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
         [{ v: `Estimación para Hacienda de ${r.year} (orientativa)`, style: 'negrita' }],
         [],
         ['Ganancias y pérdidas patrimoniales por ventas', eur(tax.salesEur)],
+        ...(tax.deferredLossEur.isZero() ? [] : [['Pérdidas que no computan por la regla de los dos meses (recompra)', eur(tax.deferredLossEur)] as Cell[]]),
+        ...(tax.releasedLossEur.isZero() ? [] : [['Pérdidas de ventas anteriores que se recuperan al vender lo recomprado', eur(tax.releasedLossEur.neg())] as Cell[]]),
         ['Dividendos y cupones (importe bruto)', eur(tax.incomeEur)],
         ['Pérdidas de años anteriores aplicadas a las ganancias de este año', eur(tax.carryAgainstSalesEur)],
         ['Pérdidas compensadas con dividendos y cupones (hasta el 25 %)', eur(tax.lossAgainstIncomeEur)],
@@ -142,7 +144,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
           ? [[{ v: 'Pérdidas pendientes de compensar (hasta 4 años después)', style: 'negrita' } as Cell], ...tax.pendingLosses.map((p): Cell[] => [`Pérdida de ${p.year}`, eur(p.amount)])]
           : []),
         [],
-        [{ v: 'Aproximación para territorio común (no País Vasco ni Navarra). No incluye la regla de los dos meses, la deducción por doble imposición internacional ni derechos de suscripción. Solo cuenta lo que hay en Buho: si faltan años anteriores, faltarán sus pérdidas pendientes. Contrástalo con el borrador de la Agencia Tributaria.', style: 'texto' }],
+        [{ v: 'Aproximación para territorio común (no País Vasco ni Navarra). Aplica la regla de los dos meses de forma simplificada. No incluye derechos de suscripción. Solo cuenta lo que hay en Buho: si faltan años anteriores, faltarán sus pérdidas pendientes. Contrástalo con el borrador de la Agencia Tributaria.', style: 'texto' }],
       ]
     : []
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import type { Asset, Movement } from './domain/types'
 import { useSync } from './sync/SyncContext'
@@ -9,6 +9,7 @@ import { PriceDetail } from './ui/PriceDetail'
 import { usePortfolio } from './ui/hooks'
 import { useSwipeNav } from './ui/useSwipeNav'
 import { IconActivos, IconAjustes, IconCartera, IconMovimientos, IconSeguimiento } from './ui/icons'
+import { computeTwoMonthRule, openLossWindows } from './domain/twoMonths'
 import { MovementDetail } from './ui/MovementDetail'
 import { MovementForm } from './ui/MovementForm'
 import { Activos } from './ui/screens/Activos'
@@ -32,6 +33,8 @@ function readRoute(): Route {
   return (ROUTES.find((r) => r.id === h)?.id ?? 'seguimiento') as Route
 }
 
+const localToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+
 type Editing =
   | { kind: 'movement'; movement?: Movement; assetId?: string }
   | { kind: 'movementView'; movement: Movement }
@@ -46,6 +49,8 @@ export function App() {
   const [editing, setEditing] = useState<Editing>(null)
   const [assetFilter, setAssetFilter] = useState('')
   const { assets, movements, portfolio } = usePortfolio()
+  const twoMonths = useMemo(() => computeTwoMonthRule(portfolio, movements), [portfolio, movements])
+  const lossWindows = useMemo(() => openLossWindows(twoMonths, localToday()), [twoMonths])
 
   // Dirección del último cambio de pestaña, para animar la entrada de la pantalla nueva.
   const [slide, setSlide] = useState<'left' | 'right' | null>(null)
@@ -95,6 +100,7 @@ export function App() {
       <main key={route} className={slide ? `slide-${slide}` : undefined}>
         {route === 'cartera' && (
           <Cartera
+            lossWindows={lossWindows}
             portfolio={portfolio}
             movements={movements}
             onAdd={() => go('movimientos')}
@@ -113,6 +119,7 @@ export function App() {
         )}
         {route === 'seguimiento' && (
           <Seguimiento
+            lossWindows={lossWindows}
             assets={assets}
             onOpen={(a) => setEditing({ kind: 'prices', asset: a })}
             onAdd={() => setEditing({ kind: 'follow' })}
@@ -151,6 +158,7 @@ export function App() {
         })()}
       {editing?.kind === 'movement' && (
         <MovementForm
+          lossWindows={twoMonths.windows}
           movement={editing.movement}
           defaultAssetId={editing.assetId}
           assets={assets}

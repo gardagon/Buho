@@ -64,7 +64,7 @@ export function Historico({ portfolio, movements }: Props) {
         })}
       </ul>
       <p className="small muted" style={{ marginTop: 8 }}>
-        Orientativo. Aún no aplica la regla de los dos meses ni los traspasos entre fondos; compruébalo antes de usarlo en la declaración.
+        Orientativo. Aplica la regla de los dos meses de forma simplificada y aún no los traspasos entre fondos; compruébalo antes de usarlo en la declaración.
       </p>
     </section>
   )
@@ -103,8 +103,18 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
               ['Plusvalías', formatMoney(report.gainsEur), 'gain'],
               ['Minusvalías', formatMoney(report.lossesEur.abs()), report.lossesEur.isZero() ? undefined : 'loss'],
               ['Coste de adquisición', formatMoney(report.costEur)],
+              ...(report.deferredLossEur.isZero() ? [] : ([['Pérdida diferida (dos meses)', formatMoney(report.deferredLossEur), 'loss']] as [string, string, string][])),
+              ...(report.releasedLossEur.isZero() ? [] : ([['Pérdida recuperada', formatMoney(report.releasedLossEur), 'loss']] as [string, string, string][])),
             ]}
           />
+          {(!report.deferredLossEur.isZero() || !report.releasedLossEur.isZero()) && (
+            <p className="small muted" style={{ margin: 0 }}>
+              {!report.deferredLossEur.isZero() &&
+                `Por haber recomprado en menos de dos meses (un año en fondos), ${formatMoney(report.deferredLossEur)} de pérdida no computa este año: se recuperará al vender esos títulos. `}
+              {!report.releasedLossEur.isZero() && `Se recuperan ${formatMoney(report.releasedLossEur)} de pérdidas de ventas anteriores. `}
+              Para Hacienda computa {formatSignedMoney(report.taxableNetEur)}.
+            </p>
+          )}
         </section>
       )}
 
@@ -240,6 +250,18 @@ function TaxBlock({ tax }: { tax: TaxEstimate }) {
             <span>Dividendos y cupones (importe bruto)</span>
             <span>{formatMoney(tax.incomeEur)}</span>
           </li>
+          {!tax.deferredLossEur.isZero() && (
+            <li>
+              <span>Pérdidas que no computan por recomprar (regla de los dos meses)</span>
+              <span>+{formatMoney(tax.deferredLossEur)}</span>
+            </li>
+          )}
+          {!tax.releasedLossEur.isZero() && (
+            <li>
+              <span>Pérdidas de antes que se recuperan al vender lo recomprado</span>
+              <span>−{formatMoney(tax.releasedLossEur)}</span>
+            </li>
+          )}
           {!tax.carryAgainstSalesEur.isZero() && (
             <li>
               <span>Pérdidas de años anteriores aplicadas a las ganancias</span>
@@ -281,8 +303,7 @@ function TaxBlock({ tax }: { tax: TaxEstimate }) {
       </details>
       <p className="small muted" style={{ margin: 0 }}>
         Aproximación para territorio común (no País Vasco ni Navarra). Los dividendos tributan por el bruto y sus retenciones
-        se restan de la cuota. No incluye la regla de los dos meses, la deducción por doble imposición internacional ni
-        derechos de suscripción, y solo cuenta lo que hay en Buho. Contrástalo con el borrador de la Agencia Tributaria.
+        se restan de la cuota. No incluye derechos de suscripción, y solo cuenta lo que hay en Buho. Contrástalo con el borrador de la Agencia Tributaria.
       </p>
     </section>
   )
@@ -366,6 +387,16 @@ export function SaleCard({ sale: s }: { sale: SaleDetail }) {
           ['Resultado', formatSignedMoney(s.profitEur) + (s.profitPct ? ` (${formatPercent(s.profitPct)})` : ''), gl(s.profitEur)],
         ]}
       />
+      {!s.deferredEur.isZero() && (
+        <p className="small loss" style={{ margin: 0 }}>
+          {formatMoney(s.deferredEur)} de la pérdida no computa: recompraste dentro de la ventana de la regla de los dos meses.
+        </p>
+      )}
+      {!s.releasedEur.isZero() && (
+        <p className="small loss" style={{ margin: 0 }}>
+          Se recuperan {formatMoney(s.releasedEur)} de una pérdida anterior que estaba diferida.
+        </p>
+      )}
       {s.pieces.map((p) => (
         <div key={p.buyMovementId + p.quantity.toString()} className="piece">
           <div className="piece-title">

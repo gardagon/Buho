@@ -26,6 +26,20 @@ Si se conoce lo que el bróker cobró (compra) o ingresó (venta) en EUR, ese im
 - La retención puede apuntarse **separada**: en origen (país extranjero) y en España, cada una con su divisa (euros o la del dividendo), tal como las muestra el bróker. Un movimiento antiguo con una sola retención sigue valiendo y se trata como «sin repartir».
 - El **neto cobrado** puede escribirse a mano (lo que realmente ingresó el bróker) y manda sobre bruto − retenciones − comisiones, igual que el total de una venta. Si hay neto y no hay retenciones, la retención es lo que falta hasta el bruto. Todo se calcula en `src/domain/income.ts`.
 
+### Regla de los dos meses (`src/domain/twoMonths.ts`)
+Art. 33.5.f y g LIRPF: una pérdida por vender valores no computa si se compran valores homogéneos dentro de los **dos meses anteriores o posteriores** a la venta (**un año** si no cotizan, como los fondos de inversión). La pérdida se imputa cuando se venden esos títulos recomprados.
+
+Cómo se aplica (simplificado):
+- Solo a las partes de la venta con pérdida (cada lote FIFO por separado).
+- Cuentan como recompra los títulos comprados en la ventana que **siguen en cartera tras esa venta** (los que salen en la propia venta no cuentan) y que no respaldan ya otra pérdida.
+- Se difiere en proporción: con 40 títulos recomprados de 100 vendidos con pérdida, se difiere el 40 %.
+- La pérdida diferida «viaja» con los títulos recomprados: al venderlos, se recupera en esa venta (pro rata). La ventana incluye el día de la venta y el mismo día dos meses después.
+- Criptomonedas: no se aplica (no son valores; sin criterio firme de la AEAT).
+- La app avisa en **Cartera** y **Seguimiento** de qué valores no conviene recomprar todavía y hasta cuándo, y en el formulario de compra si la fecha cae dentro de una ventana.
+- `YearReport.taxableNetEur` es el saldo de ventas que computa (`netEur` + diferidas − recuperadas) y es el que usa la estimación de Hacienda.
+
+Límites: no distingue valores homogéneos por ISIN distinto (se agrupa por activo), ni trata las cadenas de recompras con pérdidas sucesivas más allá de lo descrito.
+
 ### Estimación de la cuota del ahorro (`src/domain/tax.ts`)
 Aproximación de lo que se pagaría por la base imponible del ahorro de cada año, en territorio común. Se muestra en Cartera → Histórico, dentro de cada año, con el cálculo a la vista, y en una hoja del Excel.
 
@@ -53,7 +67,7 @@ Las fuentes consultadas discrepan sobre el último tramo de 2025 y 2026 (28 % o 
 
 **Límites conocidos (la app los dice en pantalla):**
 - Solo cuenta lo que hay en Buho: si faltan años anteriores, faltan sus pérdidas pendientes.
-- No aplica la regla de los dos meses (ver «Pendiente»), la deducción por doble imposición internacional (se resta toda la retención como si fuera española), los derechos de suscripción ni gastos de administración y custodia.
+- Aplica la regla de los dos meses de forma simplificada (ver arriba). No aplica la deducción por doble imposición internacional (se resta toda la retención como si fuera española), los derechos de suscripción ni gastos de administración y custodia.
 - Territorio común: País Vasco y Navarra tienen escala propia.
 - Es una ayuda para hacerse una idea; no sustituye al borrador de la Agencia Tributaria.
 
@@ -61,12 +75,11 @@ Casos de prueba calculados a mano en `src/domain/tax.test.ts`.
 
 ## Pendiente (orden sugerido)
 
-1. **Regla de los dos meses** (art. 33.5.f LIRPF): si hay pérdida en la venta de valores cotizados y se recompran valores homogéneos en los dos meses anteriores o posteriores, la pérdida no se computa hasta que se vendan esos valores recomprados. Para valores no cotizados el plazo es de un año (art. 33.5.g). Hay que marcar la pérdida como diferida e imputarla cuando salgan los títulos recomprados.
-2. **Splits y contrasplits:** cambian la cantidad y el coste unitario de los lotes sin alterar el coste total ni las fechas. Nuevo tipo de movimiento.
-3. **Traspasos entre fondos de inversión** (art. 94 LIRPF): no tributan; el fondo de destino hereda las fechas y costes de los lotes del de origen. Nuevo tipo de movimiento.
-4. **Derechos de suscripción y scrip dividends:** desde 2017 la venta de derechos de valores cotizados tributa como ganancia patrimonial con retención.
-5. **Separar retención en origen y en destino** para calcular la deducción por doble imposición internacional (límite: lo que se pagaría en España por esa renta).
-6. **Informe para la declaración:** por año, ventas con fecha y valor de adquisición y transmisión por lote, como las pide el modelo 100.
+1. **Splits y contrasplits:** cambian la cantidad y el coste unitario de los lotes sin alterar el coste total ni las fechas. Nuevo tipo de movimiento.
+2. **Traspasos entre fondos de inversión** (art. 94 LIRPF): no tributan; el fondo de destino hereda las fechas y costes de los lotes del de origen. Nuevo tipo de movimiento.
+3. **Derechos de suscripción y scrip dividends:** desde 2017 la venta de derechos de valores cotizados tributa como ganancia patrimonial con retención.
+4. **Separar retención en origen y en destino** para calcular la deducción por doble imposición internacional (límite: lo que se pagaría en España por esa renta).
+5. **Informe para la declaración:** por año, ventas con fecha y valor de adquisición y transmisión por lote, como las pide el modelo 100.
 
 ## Casos de prueba de referencia
 

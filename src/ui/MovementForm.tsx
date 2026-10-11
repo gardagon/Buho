@@ -10,11 +10,15 @@ import { completeTrade } from '../domain/trade'
 import { fetchRateOn } from '../quotes/fx'
 import { MOVEMENT_TYPES, isTrade, type Asset, type Movement, type MovementType } from '../domain/types'
 import { AssetForm } from './AssetForm'
+import { windowsHitBy } from './LossWindows'
+import type { LossWindow } from '../domain/twoMonths'
 import { Field, Sheet } from './Sheet'
 import { Spinner } from './Spinner'
 import { useToast } from './Toast'
 
 interface Props {
+  /** Ventas con pérdida y su ventana de recompra (regla de los dos meses). */
+  lossWindows: LossWindow[]
   movement?: Movement
   assets: Asset[]
   movements: Movement[]
@@ -43,7 +47,7 @@ const today = () => {
   return new Date(n.getTime() - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 }
 
-export function MovementForm({ movement, assets, movements, defaultAssetId, onClose }: Props) {
+export function MovementForm({ lossWindows, movement, assets, movements, defaultAssetId, onClose }: Props) {
   const toast = useToast()
   const [assetId, setAssetId] = useState(movement?.assetId ?? defaultAssetId ?? assets[0]?.id ?? '')
   const [type, setType] = useState<MovementType>(movement?.type ?? 'compra')
@@ -532,6 +536,15 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
           {formatMoney(check.high!, check.currency)}. Revisa el precio, la divisa o la fecha (también puede ser un split posterior).
         </p>
       )}
+      {type === 'compra' && /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+        windowsHitBy(lossWindows, assetId, date).map((w) => (
+          <p key={w.saleMovementId} className="notice small" role="status">
+            Regla de los dos meses: vendiste {asset?.name} con {formatMoney(w.lossEur)} de pérdida el{' '}
+            {dayFmt.format(new Date(w.saleDate + 'T12:00:00'))}. Comprar el {dayFmt.format(new Date(date + 'T12:00:00'))} hace que esa
+            pérdida (o la parte proporcional) no compute hasta que vendas estos títulos. Para evitarlo, compra a partir del{' '}
+            {dayFmt.format(new Date(w.safeFrom + 'T12:00:00'))}.
+          </p>
+        ))}
       {trade && t?.inconsistent && (
         <p className="error-text">
           {type === 'compra'

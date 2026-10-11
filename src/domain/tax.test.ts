@@ -5,8 +5,11 @@ import { applyBrackets, estimateTax, savingsBrackets } from './tax'
 
 const D = (v: string | number) => new Decimal(v)
 /** Un año con solo lo que importa para el cálculo. */
-const yr = (year: number, sales: number, income = 0, withholding = 0) =>
-  ({ year: String(year), netEur: D(sales), incomeGrossEur: D(income), withholdingEur: D(withholding) }) as YearReport
+const yr = (year: number, sales: number, income = 0, withholding = 0, deferred = 0, released = 0) =>
+  ({
+    year: String(year), netEur: D(sales), incomeGrossEur: D(income), withholdingEur: D(withholding),
+    deferredLossEur: D(deferred), releasedLossEur: D(released), taxableNetEur: D(sales + deferred - released),
+  }) as YearReport
 
 describe('escala del ahorro', () => {
   it('2026: 19 % hasta 6.000, 21 % hasta 50.000, 23 % hasta 200.000 y 27 % hasta 300.000', () => {
@@ -89,5 +92,20 @@ describe('estimateTax', () => {
 
   it('un año sin actividad no tiene estimación', () => {
     expect(estimateTax([yr(2025, 100)], '2026')).toBeUndefined()
+  })
+
+  it('la regla de los dos meses: la pérdida diferida no compensa ganancias hasta que se recupera', () => {
+    // 2026: ventas −3.000 € (una pérdida de 2.000 € diferida por recompra) y otra venta con +5.000 €.
+    // Neto real: +2.000 €. Computable: 2.000 + 2.000 diferidos = 4.000 € → 6.000×19 % no se alcanza: 4.000×19 % = 760 €.
+    const e = estimateTax([yr(2026, 2000, 0, 0, 2000)], '2026')!
+    expect(e.salesEur.toString()).toBe('2000')
+    expect(e.deferredLossEur.toString()).toBe('2000')
+    expect(e.baseEur.toString()).toBe('4000')
+    expect(e.cuotaEur.toString()).toBe('760')
+    // 2027: se venden los títulos recomprados con +500 € y se recuperan los 2.000 € de pérdida: computa 500 − 2.000 = −1.500 €.
+    // Sin dividendos, esa pérdida queda pendiente para los años siguientes.
+    const e27 = estimateTax([yr(2026, 2000, 0, 0, 2000), yr(2027, 500, 0, 0, 0, 2000)], '2027')!
+    expect(e27.baseEur.toString()).toBe('0')
+    expect(e27.pendingLosses.map((p) => [p.year, p.amount.toString()])).toEqual([[2027, '1500']])
   })
 })

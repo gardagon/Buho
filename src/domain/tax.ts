@@ -64,6 +64,9 @@ export interface TaxEstimate {
   year: string
   /** Saldo de ganancias y pérdidas patrimoniales por ventas del año. */
   salesEur: Decimal
+  /** Regla de los dos meses: pérdidas del año que no computan (suman al saldo) y pérdidas de antes que se recuperan (restan). */
+  deferredLossEur: Decimal
+  releasedLossEur: Decimal
   /** Dividendos y cupones brutos del año (rendimientos del capital mobiliario). */
   incomeEur: Decimal
   /** Pérdidas de años anteriores compensadas con las ganancias de este año. */
@@ -115,7 +118,7 @@ export function estimateTax(reports: YearReport[], year: string): TaxEstimate | 
 
   for (let y = Math.min(...years); y <= target; y++) {
     const r = byYear.get(y)
-    const sales = r?.netEur ?? ZERO
+    const sales = r?.taxableNetEur ?? ZERO
     const income = r?.incomeGrossEur ?? ZERO
     const withholding = r?.withholdingEur ?? ZERO
 
@@ -159,7 +162,9 @@ export function estimateTax(reports: YearReport[], year: string): TaxEstimate | 
       const { lines, tax } = applyBrackets(base, brackets)
       result = {
         year,
-        salesEur: sales,
+        salesEur: r?.netEur ?? ZERO,
+        deferredLossEur: r?.deferredLossEur ?? ZERO,
+        releasedLossEur: r?.releasedLossEur ?? ZERO,
         incomeEur: income,
         carryAgainstSalesEur: carryAgainstSales,
         lossAgainstIncomeEur: lossAgainstIncome,

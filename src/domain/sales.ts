@@ -1,4 +1,5 @@
 import { Decimal, d } from './numbers'
+import { computeTwoMonthRule } from './twoMonths'
 import { toEur, type Portfolio } from './portfolio'
 import type { Asset, Movement } from './types'
 
@@ -39,6 +40,10 @@ export interface SaleDetail {
   costEur: Decimal
   profitEur: Decimal
   profitPct?: Decimal
+  /** Regla de los dos meses: parte de la pérdida que no computa por haber recomprado (positivo). */
+  deferredEur: Decimal
+  /** Pérdida de ventas anteriores que se recupera en esta venta (positivo). */
+  releasedEur: Decimal
   pieces: SalePiece[]
 }
 
@@ -90,6 +95,11 @@ export interface YearReport {
   /** Suma de las ventas con pérdida (en negativo). */
   lossesEur: Decimal
   netEur: Decimal
+  /** Regla de los dos meses: pérdidas del año que no computan, y pérdidas de antes que se recuperan (positivos). */
+  deferredLossEur: Decimal
+  releasedLossEur: Decimal
+  /** Saldo de ventas que computa para Hacienda: `netEur` + pérdidas diferidas − pérdidas recuperadas. */
+  taxableNetEur: Decimal
   incomeGrossEur: Decimal
   withholdingEur: Decimal
   /** Reparto de la retención del año: país de origen, España y sin clasificar. */
@@ -122,6 +132,7 @@ export function yearsWithActivity(portfolio: Portfolio): string[] {
  * compras, su importe y sus comisiones se reparten por títulos.
  */
 export function yearReport(portfolio: Portfolio, movements: Movement[], year: string): YearReport {
+  const rule = computeTwoMonthRule(portfolio, movements)
   const byId = new Map(movements.filter((m) => !m.deleted).map((m) => [m.id, m]))
   const assets = new Map<string, AssetYear>()
   const get = (asset: Asset): AssetYear => {
@@ -166,8 +177,11 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
       }
     })
     const a = get(s.asset)
+    const tm = rule.bySale.get(s.movementId)
     a.sales.push({
       movementId: s.movementId,
+      deferredEur: tm?.deferredEur ?? ZERO,
+      releasedEur: tm?.releasedEur ?? ZERO,
       date: s.date,
       quantity: s.quantity,
       price: d(m?.price),
@@ -229,6 +243,9 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
     gainsEur: sum(allSales.filter((s) => s.profitEur.gte(0)).map((s) => s.profitEur)),
     lossesEur: sum(allSales.filter((s) => s.profitEur.lt(0)).map((s) => s.profitEur)),
     netEur: sum(allSales.map((s) => s.profitEur)),
+    deferredLossEur: sum(allSales.map((s) => s.deferredEur)),
+    releasedLossEur: sum(allSales.map((s) => s.releasedEur)),
+    taxableNetEur: sum(allSales.map((s) => s.profitEur.plus(s.deferredEur).minus(s.releasedEur))),
     incomeGrossEur: sum(list.map((a) => a.incomeGrossEur)),
     withholdingEur: sum(list.map((a) => a.withholdingEur)),
     withholdingOriginEur: sum(allIncomes.map((i) => i.originEur)),
