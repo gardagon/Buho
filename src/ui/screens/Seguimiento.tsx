@@ -2,17 +2,15 @@ import { formatMoney, formatPercent } from '../../domain/numbers'
 import { ASSET_TYPES, type Asset } from '../../domain/types'
 import { dayChange, displayPrice, pickPrice } from '../../domain/valuation'
 import { useQuotes } from '../../quotes/QuotesContext'
-import { LossWindowsNotice, type OpenLossWindow } from '../LossWindows'
 import { priceStamp, RefreshLine } from '../prices'
 
 interface Props {
-  lossWindows: OpenLossWindow[]
   assets: Asset[]
   onOpen: (asset: Asset) => void
   onAdd: () => void
 }
 
-export function Seguimiento({ lossWindows, assets, onOpen, onAdd }: Props) {
+export function Seguimiento({ assets, onOpen, onAdd }: Props) {
   const { quotes, fx, hasKey, baseCurrency } = useQuotes()
   const watched = assets.filter((a) => a.watched)
 
@@ -41,7 +39,6 @@ export function Seguimiento({ lossWindows, assets, onOpen, onAdd }: Props) {
       ) : (
         <>
           <RefreshLine />
-          <LossWindowsNotice windows={lossWindows.filter((w) => watched.some((a) => a.id === w.asset.id))} />
           <ul className="rows">
             {watched.map((a) => {
               const price = pickPrice(a, quotes.get(a.id))

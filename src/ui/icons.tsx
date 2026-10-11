@@ -39,3 +39,12 @@ export const IconSeguimiento = () => (
     <circle cx="12" cy="12" r="2.5" />
   </svg>
 )
+
+/** Triángulo de atención junto al nombre de un valor con algo que revisar. */
+export const IconAviso = () => (
+  <svg className="warn-icon" viewBox="0 0 24 24" width="18" height="18" role="img" aria-label="Atención: regla de los dos meses" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <title>Atención: regla de los dos meses</title>
+    <path d="M10.3 3.9 1.8 18.2A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9v4M12 17h.01" />
+  </svg>
+)

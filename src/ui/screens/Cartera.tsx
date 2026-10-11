@@ -7,7 +7,8 @@ import { summarizeByYear, type Portfolio } from '../../domain/portfolio'
 import { yearReport, yearsWithActivity } from '../../domain/sales'
 import { ASSET_TYPES, type AssetType, type Movement } from '../../domain/types'
 import { Historico } from '../Historico'
-import { LossWindowsNotice, type OpenLossWindow } from '../LossWindows'
+import { IconAviso } from '../icons'
+import type { OpenLossWindow } from '../LossWindows'
 import { Decimal } from '../../domain/numbers'
 
 export const TYPE_COLORS: Record<AssetType, string> = {
@@ -26,9 +27,11 @@ interface Props {
   movements: Movement[]
   onAdd: () => void
   onOpenAsset: (assetId: string) => void
+  /** Valor que ya no se tiene pero con la ventana de recompra abierta. */
+  onOpenWindow: (assetId: string) => void
 }
 
-export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset }: Props) {
+export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset, onOpenWindow }: Props) {
   const { positions, totalCostEur, issues } = portfolio
   const years = useMemo(() => summarizeByYear(portfolio), [portfolio])
   const yearsList = useMemo(() => yearsWithActivity(portfolio), [portfolio])
@@ -36,6 +39,14 @@ export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset 
   const { quotes, fx } = useQuotes()
   const valuation = useMemo(() => valuePositions(positions, quotes, fx), [positions, quotes, fx])
   const valuedCount = positions.length - valuation.unvalued
+  // Valores con la ventana de recompra abierta, con y sin títulos en cartera.
+  const warned = useMemo(() => new Set(lossWindows.map((w) => w.asset.id)), [lossWindows])
+  const soldOut = useMemo(() => {
+    const held = new Set(positions.map((p) => p.asset.id))
+    const seen = new Map<string, OpenLossWindow>()
+    for (const w of lossWindows) if (!held.has(w.asset.id) && !seen.has(w.asset.id)) seen.set(w.asset.id, w)
+    return [...seen.values()]
+  }, [lossWindows, positions])
   const rowByAsset = useMemo(() => new Map(valuation.rows.map((r) => [r.position.asset.id, r])), [valuation])
 
   const mix = useMemo(() => {
@@ -113,8 +124,6 @@ export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset 
       )}
 
 
-      <LossWindowsNotice windows={lossWindows} />
-
       {issues.length > 0 && (
         <div className="notice" role="alert">
           <strong>Hay movimientos que no cuadran.</strong>
@@ -144,7 +153,7 @@ export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset 
         </div>
       )}
 
-      {positions.length > 0 && (
+      {(positions.length > 0 || soldOut.length > 0) && (
         <section>
           <h2>Posiciones</h2>
           <RefreshLine />
@@ -154,7 +163,10 @@ export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset 
               return (
                 <li key={p.asset.id}>
                   <button className="row" onClick={() => onOpenAsset(p.asset.id)}>
-                    <span className="row-title">{p.asset.name}</span>
+                    <span className="row-title">
+                      {p.asset.name}
+                      {warned.has(p.asset.id) && <IconAviso />}
+                    </span>
                     <span className="row-end num">
                       <strong>{formatMoney(v?.valueEur ?? p.costEur)}</strong>
                     </span>
@@ -181,6 +193,17 @@ export function Cartera({ lossWindows, portfolio, movements, onAdd, onOpenAsset 
                 </li>
               )
             })}
+            {soldOut.map((w) => (
+              <li key={w.asset.id}>
+                <button className="row" onClick={() => onOpenWindow(w.asset.id)}>
+                  <span className="row-title">
+                    {w.asset.name}
+                    <IconAviso />
+                  </span>
+                  <span className="row-end num muted">Sin títulos</span>
+                </button>
+              </li>
+            ))}
           </ul>
           <p className="small muted" style={{ marginTop: 8 }}>
             El valor usa el último precio disponible y el cambio actual del BCE. La plusvalía latente es orientativa: el coste

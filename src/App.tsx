@@ -10,6 +10,7 @@ import { usePortfolio } from './ui/hooks'
 import { useSwipeNav } from './ui/useSwipeNav'
 import { IconActivos, IconAjustes, IconCartera, IconMovimientos, IconSeguimiento } from './ui/icons'
 import { computeTwoMonthRule, openLossWindows } from './domain/twoMonths'
+import { LossWindowSheet } from './ui/LossWindows'
 import { MovementDetail } from './ui/MovementDetail'
 import { MovementForm } from './ui/MovementForm'
 import { Activos } from './ui/screens/Activos'
@@ -42,6 +43,7 @@ type Editing =
   | { kind: 'follow' }
   | { kind: 'prices'; asset: Asset }
   | { kind: 'position'; assetId: string }
+  | { kind: 'lossWindow'; assetId: string }
   | null
 
 export function App() {
@@ -105,6 +107,7 @@ export function App() {
             movements={movements}
             onAdd={() => go('movimientos')}
             onOpenAsset={(id) => setEditing({ kind: 'position', assetId: id })}
+            onOpenWindow={(id) => setEditing({ kind: 'lossWindow', assetId: id })}
           />
         )}
         {route === 'movimientos' && (
@@ -119,7 +122,6 @@ export function App() {
         )}
         {route === 'seguimiento' && (
           <Seguimiento
-            lossWindows={lossWindows}
             assets={assets}
             onOpen={(a) => setEditing({ kind: 'prices', asset: a })}
             onAdd={() => setEditing({ kind: 'follow' })}
@@ -173,6 +175,7 @@ export function App() {
           if (!position) return null
           return (
             <PositionDetail
+              lossWindows={lossWindows.filter((w) => w.asset.id === editing.assetId)}
               position={position}
               portfolio={portfolio}
               movements={movements}
@@ -183,6 +186,23 @@ export function App() {
                 go('movimientos')
               }}
               onOpenPrices={() => setEditing({ kind: 'prices', asset: position.asset })}
+            />
+          )
+        })()}
+      {editing?.kind === 'lossWindow' &&
+        (() => {
+          const asset = assets.find((a) => a.id === editing.assetId)
+          if (!asset) return null
+          return (
+            <LossWindowSheet
+              asset={asset}
+              windows={lossWindows.filter((w) => w.asset.id === editing.assetId)}
+              onClose={() => setEditing(null)}
+              onOpenMovements={() => {
+                setAssetFilter(editing.assetId)
+                setEditing(null)
+                go('movimientos')
+              }}
             />
           )
         })()}

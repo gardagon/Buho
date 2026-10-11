@@ -722,3 +722,7 @@ main.slide-right { animation: enter-from-left 0.2s ease-out; }
 .net-log .net-target { overflow-wrap: anywhere; color: var(--ink-2); }
 .net-log li.slow > span:first-child { color: var(--amber); font-weight: 650; }
 .net-log li.loss > span { color: var(--loss); }
+
+/* ---------- Aviso junto al nombre de un valor ---------- */
+
+.warn-icon { display: inline-block; vertical-align: -3px; margin-left: 6px; color: var(--amber); }

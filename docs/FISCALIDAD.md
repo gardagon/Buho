@@ -35,7 +35,7 @@ Cómo se aplica (simplificado):
 - Se difiere en proporción: con 40 títulos recomprados de 100 vendidos con pérdida, se difiere el 40 %.
 - La pérdida diferida «viaja» con los títulos recomprados: al venderlos, se recupera en esa venta (pro rata). La ventana incluye el día de la venta y el mismo día dos meses después.
 - Criptomonedas: no se aplica (no son valores; sin criterio firme de la AEAT).
-- La app avisa en **Cartera** y **Seguimiento** de qué valores no conviene recomprar todavía y hasta cuándo, y en el formulario de compra si la fecha cae dentro de una ventana.
+- La app marca con un triángulo de atención, en **Cartera**, los valores con la ventana abierta (también los que ya no se tienen); al tocarlos, el aviso (hasta cuándo no recomprar) es lo primero en su pantalla. El formulario de compra avisa si la fecha cae dentro de una ventana.
 - `YearReport.taxableNetEur` es el saldo de ventas que computa (`netEur` + diferidas − recuperadas) y es el que usa la estimación de Hacienda.
 
 Límites: no distingue valores homogéneos por ISIN distinto (se agrupa por activo), ni trata las cadenas de recompras con pérdidas sucesivas más allá de lo descrito.

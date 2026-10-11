@@ -8,6 +8,7 @@ import type { Portfolio, Position } from '../domain/portfolio'
 import type { Movement, PricePoint, QuoteDay } from '../domain/types'
 import { counterPrice, valuePositions } from '../domain/valuation'
 import { useQuotes } from '../quotes/QuotesContext'
+import { LossWindowsNotice, type OpenLossWindow } from './LossWindows'
 import { priceNote } from './prices'
 import { Sheet } from './Sheet'
 
@@ -24,6 +25,8 @@ const today = () => {
 }
 
 interface Props {
+  /** Ventanas de recompra abiertas de este valor (regla de los dos meses). */
+  lossWindows: OpenLossWindow[]
   position: Position
   portfolio: Portfolio
   movements: Movement[]
@@ -33,7 +36,7 @@ interface Props {
 }
 
 /** Ficha de una posición: cuánto se tiene, cuánto vale y cómo ha rendido en cada periodo; con el detalle por compra. */
-export function PositionDetail({ position, portfolio, movements, onClose, onOpenMovements, onOpenPrices }: Props) {
+export function PositionDetail({ lossWindows, position, portfolio, movements, onClose, onOpenMovements, onOpenPrices }: Props) {
   const { asset } = position
   const { quotes, fx } = useQuotes()
   const [view, setView] = useState<'resumen' | 'detalle'>('resumen')
@@ -68,6 +71,8 @@ export function PositionDetail({ position, portfolio, movements, onClose, onOpen
         </>
       }
     >
+      <LossWindowsNotice windows={lossWindows} />
+
       <div className="segmented" role="radiogroup" aria-label="Vista de la posición">
         {(
           [
