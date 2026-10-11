@@ -130,4 +130,21 @@ describe('regla de los dos meses', () => {
     expect(w.daysLeft).toBe(40)
     expect(openLossWindows(r, '2026-05-11')).toEqual([])
   })
+
+  it('un fondo vendido del todo mantiene su ventana abierta un año y desaparece al cumplirse', () => {
+    const ms = [
+      mv({ type: 'compra', date: '2026-01-05', quantity: '10', price: '10' }),
+      mv({ type: 'venta', date: '2026-03-10', quantity: '10', price: '8' }),
+    ]
+    const { p, r } = run(asset('fondo'), ms)
+    expect(p.positions).toEqual([]) // ya no hay títulos en cartera
+    const [w] = openLossWindows(r, '2026-12-01')
+    expect(w.months).toBe(12)
+    expect(w.until).toBe('2027-03-10')
+    expect(w.safeFrom).toBe('2027-03-11')
+    expect(w.daysLeft).toBe(100)
+    // Pasado el último día de la ventana, desaparece.
+    expect(openLossWindows(r, '2027-03-10')).toHaveLength(1)
+    expect(openLossWindows(r, '2027-03-11')).toEqual([])
+  })
 })
