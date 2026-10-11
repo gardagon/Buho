@@ -4,7 +4,7 @@ import { db } from '../data/db'
 import { deleteMovement, saveMovement } from '../data/repo'
 import { checkTradePrice } from '../domain/checks'
 import { Decimal, d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
-import { incomeBreakdown } from '../domain/income'
+import { impliedIncomeFx, incomeBreakdown } from '../domain/income'
 import { computePortfolio, toEur } from '../domain/portfolio'
 import { completeTrade } from '../domain/trade'
 import { fetchRateOn } from '../quotes/fx'
@@ -159,7 +159,24 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const check =
     trade && t?.price ? checkTradePrice({ type, price: t.price.toString(), currency } as Movement, day) : null
 
-  const fx = transfer ? '1' : trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? ecbNow?.rate) : '1'
+  // Dividendo en divisa con el neto real puesto y sin cambio escrito: el cambio que explica lo que ingresó el bróker.
+  const splitNow = whOrigin.trim() !== '' || whDest.trim() !== ''
+  const derivedFx =
+    !trade && !transfer && needsFx && fxRaw === undefined && netRaw && am && fe !== null && wh !== null && whO !== null && whD !== null
+      ? impliedIncomeFx({
+          amount: d(am),
+          fees: d(fe),
+          currency,
+          netEur: d(netRaw),
+          withholdings: splitNow
+            ? [
+                ...(whO ? [{ amount: d(whO), currency: whOriginCur ?? currency }] : []),
+                ...(whD ? [{ amount: d(whD), currency: whDestCur ?? currency }] : []),
+              ]
+            : [{ amount: d(wh), currency }],
+        })
+      : undefined
+  const fx = transfer ? '1' : trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? derivedFx?.toString() ?? ecbNow?.rate) : '1'
 
   const errors: Record<string, boolean> = {
     asset: !asset,
@@ -506,13 +523,19 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
             <div className="grid-2">
               <Field
                 label="Tipo de cambio"
-                hint={ecbNow && !fxRaw ? `Del BCE (${dayFmt.format(new Date(ecbNow.date + 'T12:00:00'))})` : `${currency} por 1 EUR ese día`}
+                hint={
+                  derivedFx
+                    ? 'Calculado con el neto: el que explica lo que te ingresaron'
+                    : ecbNow && !fxRaw
+                      ? `Del BCE (${dayFmt.format(new Date(ecbNow.date + 'T12:00:00'))}). Escribe el de tu bróker si lo sabes, o el neto cobrado y se calcula.`
+                      : `${currency} por 1 EUR ese día`
+                }
               >
                 <input
                   inputMode="decimal"
                   value={fxRate}
                   onChange={(e) => editIncome(setFxRate, e.target.value)}
-                  placeholder={ecbNow ? toInputValue(ecbNow.rate) : '1,0850'}
+                  placeholder={derivedFx ? toInputValue(derivedFx.toString()) : ecbNow ? toInputValue(ecbNow.rate) : '1,0850'}
                   aria-invalid={bad('fx')}
                 />
               </Field>

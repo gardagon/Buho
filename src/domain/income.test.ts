@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { incomeBreakdown } from './income'
+import { impliedIncomeFx, incomeBreakdown } from './income'
+import { Decimal } from './numbers'
 import type { Movement } from './types'
 
 const now = '2026-01-01T00:00:00.000Z'
@@ -49,5 +50,29 @@ describe('incomeBreakdown', () => {
     const b = incomeBreakdown(div({ amount: '100', withholdingOrigin: '15', netEur: '84' }))
     expect(b.netEur.toFixed(2)).toBe('84.00')
     expect(b.mismatchEur?.toFixed(2)).toBe('-1.00')
+  })
+
+  it('el cambio efectivo sale del neto que el bróker ingresó (dividendo real de Nvidia)', () => {
+    // 7,50 $ brutos; retención de 1,13 $ en origen y de 1,07 € en España; ingresaron 4,55 €.
+    // cambio = (7,50 − 1,13) ÷ (4,55 + 1,07) = 6,37 ÷ 5,62 = 1,133452
+    const fx = impliedIncomeFx({
+      amount: new Decimal('7.5'), fees: new Decimal(0), currency: 'USD', netEur: new Decimal('4.55'),
+      withholdings: [{ amount: new Decimal('1.13'), currency: 'USD' }, { amount: new Decimal('1.07'), currency: 'EUR' }],
+    })!
+    expect(fx.toString()).toBe('1.133452')
+    // Con ese cambio todo cuadra con el ingreso: neto 4,55 € sin diferencias.
+    const b = incomeBreakdown(
+      div({ amount: '7.5', currency: 'USD', fxRate: fx.toString(), withholdingOrigin: '1.13', withholdingOriginCurrency: 'USD', withholdingDest: '1.07', withholdingDestCurrency: 'EUR', netEur: '4.55' }),
+    )
+    expect(eurs(b)).toEqual({ gross: '6.62', origin: '1.00', dest: '1.07', other: '0.00', net: '4.55' })
+    expect(b.mismatchEur).toBeUndefined()
+  })
+
+  it('en euros no hay cambio que calcular, y sin solución posible no inventa uno', () => {
+    expect(impliedIncomeFx({ amount: new Decimal(10), fees: new Decimal(0), currency: 'EUR', netEur: new Decimal(8), withholdings: [] })).toBeUndefined()
+    // La retención en dólares se come todo el bruto: no hay cambio posible.
+    expect(
+      impliedIncomeFx({ amount: new Decimal(5), fees: new Decimal(0), currency: 'USD', netEur: new Decimal(1), withholdings: [{ amount: new Decimal(5), currency: 'USD' }] }),
+    ).toBeUndefined()
   })
 })

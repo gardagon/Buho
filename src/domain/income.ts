@@ -56,3 +56,32 @@ export function incomeBreakdown(m: Movement): IncomeBreakdown {
   const withholdingEur = originEur.plus(destEur).plus(unclassifiedEur)
   return { grossEur, originEur, destEur, unclassifiedEur, withholdingEur, feesEur, netEur, mismatchEur }
 }
+
+/**
+ * Cambio efectivo de un dividendo en divisa: el que hace que bruto, retenciones y comisiones cuadren con el neto
+ * que el bróker ingresó de verdad (cada bróker aplica su cambio, y rara vez es el del BCE del día).
+ *
+ * neto = (bruto − comisiones − retenciones en la divisa del dividendo) ÷ cambio − retenciones en euros
+ * ⇒ cambio = (bruto − comisiones − retenciones en la divisa) ÷ (neto + retenciones en euros)
+ *
+ * Devuelve undefined si no hay solución (el denominador o el numerador no son positivos).
+ */
+export function impliedIncomeFx(i: {
+  amount: Decimal
+  fees: Decimal
+  currency: string
+  netEur: Decimal
+  withholdings: { amount: Decimal; currency: string }[]
+}): Decimal | undefined {
+  if (i.currency === 'EUR') return undefined
+  let inCurrency = ZERO
+  let inEur = ZERO
+  for (const w of i.withholdings) {
+    if (w.currency === 'EUR') inEur = inEur.plus(w.amount)
+    else inCurrency = inCurrency.plus(w.amount)
+  }
+  const numerator = i.amount.minus(i.fees).minus(inCurrency)
+  const denominator = i.netEur.plus(inEur)
+  if (numerator.lte(0) || denominator.lte(0)) return undefined
+  return numerator.div(denominator).toDecimalPlaces(6)
+}
