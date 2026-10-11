@@ -58,6 +58,9 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
     return toInputValue(toEur(d(movement.fees), movement.fxRate).toDecimalPlaces(4).toString())
   })
   const [totalPaid, setTotalPaid] = useState(toInputValue(movement?.totalEur))
+  // Al editar, el total guardado manda sobre el cálculo: si cambias cantidad, precio, cambio o comisiones sin tocar
+  // el total, se recalcula en vez de dejar el antiguo (que haría que el cambio no se notara en el coste).
+  const [totalTouched, setTotalTouched] = useState(false)
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(movement?.currency ?? null)
   const [withholding, setWithholding] = useState(
     movement && movement.withholding !== '0' ? toInputValue(movement.withholding) : '',
@@ -157,6 +160,10 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
     if (needsFx) totalEur = formatMoney(toEur(t2, fx!), 'EUR')
   }
   const totalLabel = type === 'compra' ? 'Total pagado' : type === 'venta' ? 'Total recibido' : 'Neto cobrado'
+  function edit(set: (v: string) => void, value: string) {
+    set(value)
+    if (movement && trade && !totalTouched) setTotalPaid('')
+  }
   /** Número calculado como texto para un campo vacío (coma decimal). */
   const calc = (v: Decimal | undefined, dp: number) => (v ? toInputValue(v.toDecimalPlaces(dp).toString()) : undefined)
 
@@ -290,13 +297,13 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
               label="Cantidad"
               hint={available ? `Tienes ${formatQuantity(available)} en esa fecha` : 'Títulos o participaciones'}
             >
-              <input inputMode="decimal" value={quantity} onChange={(e) => setQuantity(e.target.value)} aria-invalid={bad('quantity')} />
+              <input inputMode="decimal" value={quantity} onChange={(e) => edit(setQuantity, e.target.value)} aria-invalid={bad('quantity')} />
             </Field>
             <Field label="Precio por título" hint={t?.derived.price ? 'Calculado con el total' : undefined}>
               <input
                 inputMode="decimal"
                 value={price}
-                onChange={(e) => setPrice(e.target.value)}
+                onChange={(e) => edit(setPrice, e.target.value)}
                 placeholder={calc(t?.price, 6)}
                 aria-invalid={bad('price')}
               />
@@ -328,7 +335,7 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
                 <input
                   inputMode="decimal"
                   value={fxRate}
-                  onChange={(e) => setFxRate(e.target.value)}
+                  onChange={(e) => edit(setFxRate, e.target.value)}
                   placeholder={ecbNow ? toInputValue(ecbNow.rate) : (calc(t?.derived.fxRate ? t.fxRate : undefined, 6) ?? '1,0850')}
                   aria-invalid={bad('fx')}
                 />
@@ -343,19 +350,22 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
               <input
                 inputMode="decimal"
                 value={fees}
-                onChange={(e) => setFees(e.target.value)}
+                onChange={(e) => edit(setFees, e.target.value)}
                 placeholder={calc(t?.derived.feesEur ? t.feesEur : undefined, 2) ?? '0'}
                 aria-invalid={bad('fees')}
               />
             </Field>
             <Field
               label={`${totalLabel} (€)`}
-              hint={t?.derived.totalEur ? 'Calculado' : type === 'compra' ? 'Lo que te cobraron' : 'Lo que te ingresaron'}
+              hint={t?.derived.totalEur ? (movement?.totalEur && !totalTouched ? 'Recalculado con tus cambios' : 'Calculado') : type === 'compra' ? 'Lo que te cobraron' : 'Lo que te ingresaron'}
             >
               <input
                 inputMode="decimal"
                 value={totalPaid}
-                onChange={(e) => setTotalPaid(e.target.value)}
+                onChange={(e) => {
+                  setTotalTouched(true)
+                  setTotalPaid(e.target.value)
+                }}
                 placeholder={calc(t?.derived.totalEur ? t.totalEur : undefined, 2)}
                 aria-invalid={bad('total')}
               />
