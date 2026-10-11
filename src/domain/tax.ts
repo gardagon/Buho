@@ -78,9 +78,16 @@ export interface TaxEstimate {
   baseEur: Decimal
   brackets: BracketLine[]
   cuotaEur: Decimal
-  /** Retenciones e ingresos a cuenta ya practicados sobre dividendos y cupones. */
+  /** Retenciones e ingresos a cuenta practicados en España (y las sin repartir) sobre dividendos y cupones. */
   withholdingEur: Decimal
-  /** Cuota − retenciones. Positivo: a pagar. Negativo: a devolver. */
+  /** Deducción por doble imposición internacional (art. 80 LIRPF): lo retenido en origen que se resta de la cuota. */
+  doubleTaxDeductionEur: Decimal
+  /** Retención total en origen, y la parte que excede el límite del convenio (no deducible; se reclama en el país de origen). */
+  originWithheldEur: Decimal
+  originExcessEur: Decimal
+  /** Retención sin repartir entre origen y España: se trata como retención en España. */
+  unclassifiedWithholdingEur: Decimal
+  /** Cuota − deducción − retenciones. Positivo: a pagar. Negativo: a devolver. */
   resultEur: Decimal
   /** Cuota sobre la base (tipo medio), si hay base. */
   effectiveRate?: Decimal
@@ -120,7 +127,7 @@ export function estimateTax(reports: YearReport[], year: string): TaxEstimate | 
     const r = byYear.get(y)
     const sales = r?.taxableNetEur ?? ZERO
     const income = r?.incomeGrossEur ?? ZERO
-    const withholding = r?.withholdingEur ?? ZERO
+    const withholdingSpain = (r?.withholdingDestEur ?? ZERO).plus(r?.withholdingUnclassifiedEur ?? ZERO)
 
     // Pérdidas que ya han caducado (más de 4 años), de la más antigua a la más reciente.
     pending = pending.filter((p) => p.year >= y - YEARS_FORWARD && p.amount.gt(0)).sort((a, b) => a.year - b.year)
@@ -160,6 +167,12 @@ export function estimateTax(reports: YearReport[], year: string): TaxEstimate | 
       const base = taxableSales.plus(taxableIncome)
       const { brackets, note } = savingsBrackets(y)
       const { lines, tax } = applyBrackets(base, brackets)
+      // Doble imposición (art. 80): el menor de lo retenido en origen (hasta el límite del convenio) y el tipo medio
+      // efectivo aplicado al bruto cobrado en el extranjero,
+      const rate = base.gt(0) ? tax.div(base) : ZERO
+      const limit = rate.mul(r?.foreignIncomeGrossEur ?? ZERO)
+      // Tampoco puede superar la cuota: la deducción sola nunca da lugar a una devolución.
+      const deduction = Decimal.min(r?.originDeductibleEur ?? ZERO, limit, tax)
       result = {
         year,
         salesEur: r?.netEur ?? ZERO,
@@ -173,8 +186,12 @@ export function estimateTax(reports: YearReport[], year: string): TaxEstimate | 
         baseEur: base,
         brackets: lines,
         cuotaEur: tax,
-        withholdingEur: withholding,
-        resultEur: tax.minus(withholding),
+        withholdingEur: withholdingSpain,
+        doubleTaxDeductionEur: deduction,
+        originWithheldEur: r?.withholdingOriginEur ?? ZERO,
+        originExcessEur: r?.originExcessEur ?? ZERO,
+        unclassifiedWithholdingEur: r?.withholdingUnclassifiedEur ?? ZERO,
+        resultEur: tax.minus(deduction).minus(withholdingSpain),
         effectiveRate: base.gt(0) ? tax.div(base) : undefined,
         pendingLosses: pending.map((p) => ({ ...p })),
         note: base.gt(300000) ? note : undefined,

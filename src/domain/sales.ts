@@ -106,6 +106,13 @@ export interface YearReport {
   withholdingOriginEur: Decimal
   withholdingDestEur: Decimal
   withholdingUnclassifiedEur: Decimal
+  /**
+   * Doble imposición: bruto de los dividendos y cupones con retención en origen, y esa retención dividida en lo que
+   * entra en el límite del convenio (15 % del bruto de cada cobro) y lo que lo excede.
+   */
+  foreignIncomeGrossEur: Decimal
+  originDeductibleEur: Decimal
+  originExcessEur: Decimal
   incomeNetEur: Decimal
   dividends: IncomeTotals
   coupons: IncomeTotals
@@ -113,6 +120,8 @@ export interface YearReport {
   totalEur: Decimal
 }
 
+/** Máximo de retención en origen sobre dividendos que fijan la mayoría de los convenios de España (15 %). */
+export const TREATY_CAP = new Decimal('0.15')
 const ZERO = new Decimal(0)
 const sum = (xs: Decimal[]) => xs.reduce((s, x) => s.plus(x), ZERO)
 const dayDiff = (from: string, to: string) =>
@@ -251,6 +260,9 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
     withholdingOriginEur: sum(allIncomes.map((i) => i.originEur)),
     withholdingDestEur: sum(allIncomes.map((i) => i.destEur)),
     withholdingUnclassifiedEur: sum(allIncomes.map((i) => i.unclassifiedEur)),
+    foreignIncomeGrossEur: sum(allIncomes.filter((i) => i.originEur.gt(0)).map((i) => i.grossEur)),
+    originDeductibleEur: sum(allIncomes.map((i) => Decimal.min(i.originEur, i.grossEur.mul(TREATY_CAP)))),
+    originExcessEur: sum(allIncomes.map((i) => Decimal.max(i.originEur.minus(i.grossEur.mul(TREATY_CAP)), ZERO))),
     incomeNetEur: sum(list.map((a) => a.incomeNetEur)),
     dividends: {
       grossEur: sum(list.map((a) => a.dividends.grossEur)),

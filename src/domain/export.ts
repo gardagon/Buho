@@ -137,14 +137,16 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
         ...tax.brackets.map((b): Cell[] => [eur(new Decimal(b.from)), b.to === null ? 'en adelante' : eur(new Decimal(b.to)), { v: b.rate, style: 'pct' }, eur(b.base), eur(b.tax)]),
         [],
         [{ v: 'Cuota estimada', style: 'negrita' }, eur(tax.cuotaEur, 'eurNegrita')],
-        ['Retenciones e ingresos a cuenta practicados', eur(tax.withholdingEur)],
+        ...(tax.doubleTaxDeductionEur.isZero() ? [] : [['Deducción por doble imposición internacional (retención en origen, máx. 15 % del bruto)', eur(tax.doubleTaxDeductionEur.neg())] as Cell[]]),
+        ...(tax.originExcessEur.isZero() ? [] : [['Retención en origen que excede el límite del convenio (no deducible; reclamable en origen)', eur(tax.originExcessEur)] as Cell[]]),
+        ['Retenciones e ingresos a cuenta practicados en España', eur(tax.withholdingEur)],
         [{ v: tax.resultEur.gte(0) ? 'A pagar (aprox.)' : 'A devolver (aprox.)', style: 'negrita' }, eur(tax.resultEur.abs(), 'eurNegrita')],
         [],
         ...(tax.pendingLosses.length
           ? [[{ v: 'Pérdidas pendientes de compensar (hasta 4 años después)', style: 'negrita' } as Cell], ...tax.pendingLosses.map((p): Cell[] => [`Pérdida de ${p.year}`, eur(p.amount)])]
           : []),
         [],
-        [{ v: 'Aproximación para territorio común (no País Vasco ni Navarra). Aplica la regla de los dos meses de forma simplificada. No incluye derechos de suscripción. Solo cuenta lo que hay en Buho: si faltan años anteriores, faltarán sus pérdidas pendientes. Contrástalo con el borrador de la Agencia Tributaria.', style: 'texto' }],
+        [{ v: 'Aproximación para territorio común (no País Vasco ni Navarra). Aplica la regla de los dos meses de forma simplificada y la deducción por doble imposición con el límite habitual de los convenios (15 %). No incluye derechos de suscripción. Solo cuenta lo que hay en Buho: si faltan años anteriores, faltarán sus pérdidas pendientes. Contrástalo con el borrador de la Agencia Tributaria.', style: 'texto' }],
       ]
     : []
 

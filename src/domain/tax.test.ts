@@ -8,6 +8,9 @@ const D = (v: string | number) => new Decimal(v)
 const yr = (year: number, sales: number, income = 0, withholding = 0, deferred = 0, released = 0) =>
   ({
     year: String(year), netEur: D(sales), incomeGrossEur: D(income), withholdingEur: D(withholding),
+    // Retención sin repartir (como en los movimientos antiguos): se trata como retención en España.
+    withholdingUnclassifiedEur: D(withholding), withholdingDestEur: D(0), withholdingOriginEur: D(0),
+    foreignIncomeGrossEur: D(0), originDeductibleEur: D(0), originExcessEur: D(0),
     deferredLossEur: D(deferred), releasedLossEur: D(released), taxableNetEur: D(sales + deferred - released),
   }) as YearReport
 
@@ -107,5 +110,57 @@ describe('estimateTax', () => {
     const e27 = estimateTax([yr(2026, 2000, 0, 0, 2000), yr(2027, 500, 0, 0, 0, 2000)], '2027')!
     expect(e27.baseEur.toString()).toBe('0')
     expect(e27.pendingLosses.map((p) => [p.year, p.amount.toString()])).toEqual([[2027, '1500']])
+  })
+
+  describe('doble imposición internacional', () => {
+    /** Un año solo con dividendos: `foreign` bruto con retención en origen, y retención en España. */
+    const foreignYear = (gross: number, origin: number, spain: number): YearReport => {
+      const deductible = Math.min(origin, gross * 0.15)
+      return {
+        year: '2026', netEur: D(0), incomeGrossEur: D(gross), withholdingEur: D(origin + spain),
+        deferredLossEur: D(0), releasedLossEur: D(0), taxableNetEur: D(0),
+        withholdingOriginEur: D(origin), withholdingDestEur: D(spain), withholdingUnclassifiedEur: D(0),
+        foreignIncomeGrossEur: D(gross), originDeductibleEur: D(deductible), originExcessEur: D(origin - deductible),
+      } as YearReport
+    }
+
+    it('lo retenido en origen (hasta el 15 %) se deduce de la cuota', () => {
+      // 1.000 € brutos de un dividendo de EE. UU.: 150 € retenidos en origen (15 %) y 40 € en España.
+      // Base 1.000 € → cuota 1.000 × 19 % = 190 €. Tipo medio 19 %: límite de la deducción = 190 €, y lo retenido son 150 €.
+      // Resultado: 190 − 150 (doble imposición) − 40 (España) = 0 €.
+      const e = estimateTax([foreignYear(1000, 150, 40)], '2026')!
+      expect(e.cuotaEur.toString()).toBe('190')
+      expect(e.doubleTaxDeductionEur.toString()).toBe('150')
+      expect(e.withholdingEur.toString()).toBe('40')
+      expect(e.resultEur.toString()).toBe('0')
+    })
+
+    it('lo retenido por encima del límite del convenio no se deduce y se avisa', () => {
+      // 30 % retenido en origen (300 €) sobre 1.000 €: solo 150 € (15 %) entran en la deducción; los otros 150 € se reclaman en origen.
+      // Resultado: 190 − 150 = 40 € a pagar.
+      const e = estimateTax([foreignYear(1000, 300, 0)], '2026')!
+      expect(e.doubleTaxDeductionEur.toString()).toBe('150')
+      expect(e.originExcessEur.toString()).toBe('150')
+      expect(e.resultEur.toString()).toBe('40')
+    })
+
+    it('sin dividendos extranjeros no hay deducción y la retención sin repartir cuenta como española', () => {
+      // 1.000 € con 190 € de retención sin repartir: cuota 190 − 190 = 0, sin deducción.
+      const e = estimateTax([yr(2026, 0, 1000, 190)], '2026')!
+      expect(e.doubleTaxDeductionEur.toString()).toBe('0')
+      expect(e.unclassifiedWithholdingEur.toString()).toBe('190')
+      expect(e.resultEur.toString()).toBe('0')
+    })
+
+    it('la deducción nunca supera la cuota', () => {
+      // Pérdida de 2.000 € y 100 € de dividendos extranjeros con 15 € de retención en origen: la base es 100 − 25 = 75 €
+      // (tope del 25 %), cuota 75 × 19 % = 14,25 €. Lo retenido (15 €) supera la cuota: solo se deducen 14,25 €.
+      const y = { ...foreignYear(100, 15, 0), netEur: D(-2000), taxableNetEur: D(-2000) } as YearReport
+      const e = estimateTax([y], '2026')!
+      expect(e.baseEur.toString()).toBe('75')
+      expect(e.cuotaEur.toString()).toBe('14.25')
+      expect(e.doubleTaxDeductionEur.toString()).toBe('14.25')
+      expect(e.resultEur.toString()).toBe('0')
+    })
   })
 })

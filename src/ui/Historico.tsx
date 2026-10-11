@@ -230,8 +230,14 @@ function TaxBlock({ tax }: { tax: TaxEstimate }) {
             {tax.effectiveRate && <span className="muted"> ({formatPercent(tax.effectiveRate).replace('+', '')})</span>}
           </dd>
         </div>
+        {!tax.doubleTaxDeductionEur.isZero() && (
+          <div>
+            <dt>Doble imposición</dt>
+            <dd className="gain">−{formatMoney(tax.doubleTaxDeductionEur)}</dd>
+          </div>
+        )}
         <div>
-          <dt>Retenciones ya pagadas</dt>
+          <dt>Retenciones en España</dt>
           <dd>{formatMoney(tax.withholdingEur)}</dd>
         </div>
         <div>
@@ -287,9 +293,11 @@ function TaxBlock({ tax }: { tax: TaxEstimate }) {
             </li>
           ))}
           <li className="tax-sum">
-            <span>Cuota − retenciones</span>
+            <span>{tax.doubleTaxDeductionEur.isZero() ? 'Cuota − retenciones' : 'Cuota − doble imposición − retenciones'}</span>
             <span>
-              {formatMoney(tax.cuotaEur)} − {formatMoney(tax.withholdingEur)} = {formatSignedMoney(tax.resultEur)}
+              {formatMoney(tax.cuotaEur)}
+              {!tax.doubleTaxDeductionEur.isZero() && ` − ${formatMoney(tax.doubleTaxDeductionEur)}`} − {formatMoney(tax.withholdingEur)} ={' '}
+              {formatSignedMoney(tax.resultEur)}
             </span>
           </li>
         </ul>
@@ -299,11 +307,25 @@ function TaxBlock({ tax }: { tax: TaxEstimate }) {
             {tax.pendingLosses.map((p) => `${formatMoney(p.amount)} de ${p.year} (hasta ${p.year + 4})`).join(', ')}.
           </p>
         )}
+        {!tax.originWithheldEur.isZero() && (
+          <p className="small muted">
+            Retenido en origen: {formatMoney(tax.originWithheldEur)}. Se deduce hasta el 15 % del bruto de cada cobro (máximo habitual de los convenios) y
+            hasta la cuota que corresponde a esa renta en España.
+            {!tax.originExcessEur.isZero() &&
+              ` ${formatMoney(tax.originExcessEur)} superan ese límite: no se deducen y se pueden reclamar en el país de origen.`}
+          </p>
+        )}
+        {!tax.unclassifiedWithholdingEur.isZero() && (
+          <p className="small muted">
+            Hay {formatMoney(tax.unclassifiedWithholdingEur)} de retención sin repartir: se cuenta como retención en España. Si parte es de origen,
+            reparte la retención en cada dividendo para aplicar la deducción por doble imposición.
+          </p>
+        )}
         {tax.note && <p className="small muted">{tax.note}</p>}
       </details>
       <p className="small muted" style={{ margin: 0 }}>
-        Aproximación para territorio común (no País Vasco ni Navarra). Los dividendos tributan por el bruto y sus retenciones
-        se restan de la cuota. No incluye derechos de suscripción, y solo cuenta lo que hay en Buho. Contrástalo con el borrador de la Agencia Tributaria.
+        Aproximación para territorio común (no País Vasco ni Navarra). Los dividendos tributan por el bruto; la retención en origen
+        se deduce como doble imposición y la de España se resta de la cuota. No incluye derechos de suscripción, y solo cuenta lo que hay en Buho. Contrástalo con el borrador de la Agencia Tributaria.
       </p>
     </section>
   )

@@ -63,11 +63,17 @@ Aproximación de lo que se pagaría por la base imponible del ahorro de cada añ
 
 Las fuentes consultadas discrepan sobre el último tramo de 2025 y 2026 (28 % o 30 %); solo afecta a bases de más de 300.000 €, y la app lo avisa. Para años anteriores a 2016 se usa la escala de 2016.
 
-**Resultado:** cuota − retenciones e ingresos a cuenta de los dividendos y cupones = a pagar (o a devolver, si es negativo).
+**Doble imposición internacional (art. 80 LIRPF):** la retención practicada en el país de origen se deduce de la cuota. La deducción es el menor de:
+1. lo retenido en origen, limitado al **15 % del bruto de cada cobro** (máximo habitual de los convenios; el exceso no se deduce y se reclama al país de origen), y
+2. el tipo medio efectivo de la cuota aplicado al bruto cobrado en el extranjero.
+
+Además, nunca supera la cuota. Los dividendos «con retención en origen» son los que tienen ese dato apuntado; no se distingue país. Una retención sin repartir entre origen y España (movimientos antiguos) se trata como retención en España.
+
+**Resultado:** cuota − deducción por doble imposición − retenciones practicadas en España = a pagar (o a devolver, si es negativo).
 
 **Límites conocidos (la app los dice en pantalla):**
 - Solo cuenta lo que hay en Buho: si faltan años anteriores, faltan sus pérdidas pendientes.
-- Aplica la regla de los dos meses de forma simplificada (ver arriba). No aplica la deducción por doble imposición internacional (se resta toda la retención como si fuera española), los derechos de suscripción ni gastos de administración y custodia.
+- Aplica la regla de los dos meses de forma simplificada (ver arriba). No contempla los derechos de suscripción ni gastos de administración y custodia.
 - Territorio común: País Vasco y Navarra tienen escala propia.
 - Es una ayuda para hacerse una idea; no sustituye al borrador de la Agencia Tributaria.
 
@@ -78,8 +84,7 @@ Casos de prueba calculados a mano en `src/domain/tax.test.ts`.
 1. **Splits y contrasplits:** cambian la cantidad y el coste unitario de los lotes sin alterar el coste total ni las fechas. Nuevo tipo de movimiento.
 2. **Traspasos entre fondos de inversión** (art. 94 LIRPF): no tributan; el fondo de destino hereda las fechas y costes de los lotes del de origen. Nuevo tipo de movimiento.
 3. **Derechos de suscripción y scrip dividends:** desde 2017 la venta de derechos de valores cotizados tributa como ganancia patrimonial con retención.
-4. **Separar retención en origen y en destino** para calcular la deducción por doble imposición internacional (límite: lo que se pagaría en España por esa renta).
-5. **Informe para la declaración:** por año, ventas con fecha y valor de adquisición y transmisión por lote, como las pide el modelo 100.
+4. **Informe para la declaración:** por año, ventas con fecha y valor de adquisición y transmisión por lote, como las pide el modelo 100.
 
 ## Casos de prueba de referencia
 
