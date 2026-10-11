@@ -4,6 +4,7 @@ import { db } from '../data/db'
 import { deleteMovement, saveMovement } from '../data/repo'
 import { checkTradePrice } from '../domain/checks'
 import { Decimal, d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
+import { incomeBreakdown } from '../domain/income'
 import { computePortfolio, toEur } from '../domain/portfolio'
 import { completeTrade } from '../domain/trade'
 import { fetchRateOn } from '../quotes/fx'
@@ -62,9 +63,18 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   // el total, se recalcula en vez de dejar el antiguo (que haría que el cambio no se notara en el coste).
   const [totalTouched, setTotalTouched] = useState(false)
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(movement?.currency ?? null)
+  // Dividendos y cupones: retención en origen y en España, cada una con su divisa, y el neto real ingresado.
+  const hadSplit = movement?.withholdingOrigin !== undefined || movement?.withholdingDest !== undefined
+  const [whOrigin, setWhOrigin] = useState(movement?.withholdingOrigin && movement.withholdingOrigin !== '0' ? toInputValue(movement.withholdingOrigin) : '')
+  const [whOriginCur, setWhOriginCur] = useState<string | null>(movement?.withholdingOriginCurrency ?? null)
+  const [whDest, setWhDest] = useState(movement?.withholdingDest && movement.withholdingDest !== '0' ? toInputValue(movement.withholdingDest) : '')
+  const [whDestCur, setWhDestCur] = useState<string | null>(movement?.withholdingDestCurrency ?? null)
+  // Retención de un movimiento anterior a la separación: se conserva hasta que se reparta entre origen y España.
   const [withholding, setWithholding] = useState(
-    movement && movement.withholding !== '0' ? toInputValue(movement.withholding) : '',
+    movement && !hadSplit && movement.withholding !== '0' ? toInputValue(movement.withholding) : '',
   )
+  const [netPaid, setNetPaid] = useState(toInputValue(movement?.netEur))
+  const [netTouched, setNetTouched] = useState(false)
   const [fxRate, setFxRate] = useState(movement && movement.fxRate !== '1' ? toInputValue(movement.fxRate) : '')
   const [account, setAccount] = useState(movement?.account ?? '')
   const [note, setNote] = useState(movement?.note ?? '')
@@ -113,6 +123,9 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   const totalRaw = totalPaid.trim() === '' ? undefined : parseUserNumber(totalPaid)
   const fe = feesRaw === undefined ? '0' : feesRaw
   const wh = withholding.trim() === '' ? '0' : parseUserNumber(withholding)
+  const whO = whOrigin.trim() === '' ? undefined : parseUserNumber(whOrigin)
+  const whD = whDest.trim() === '' ? undefined : parseUserNumber(whDest)
+  const netRaw = netPaid.trim() === '' ? undefined : parseUserNumber(netPaid)
   const fxRaw = fxRate.trim() === '' ? undefined : parseUserNumber(fxRate)
 
   // Compras y ventas: lo que falta se calcula con lo que sí se ha puesto.
@@ -146,6 +159,9 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
     fees: feesRaw === null || (feesRaw !== undefined && d(feesRaw).lt(0)),
     total: trade && (totalRaw === null || (totalRaw !== undefined && d(totalRaw).lte(0)) || !!t!.inconsistent),
     withholding: wh === null || d(wh).lt(0),
+    whOrigin: whO === null || (whO !== undefined && d(whO).lt(0)),
+    whDest: whD === null || (whD !== undefined && d(whD).lt(0)),
+    net: netRaw === null || (netRaw !== undefined && d(netRaw).lte(0)),
     fx: fx === null || fx === undefined || d(fx).lte(0),
   }
   const valid = !Object.values(errors).some(Boolean)
@@ -154,12 +170,34 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
   // Importe que ve la persona en el resumen.
   let total: string | null = null
   let totalEur: string | null = null
-  if (valid && !trade) {
-    const t2 = d(am).minus(d(wh)).minus(d(fe))
-    total = formatMoney(t2, currency)
-    if (needsFx) totalEur = formatMoney(toEur(t2, fx!), 'EUR')
+  // Dividendos y cupones: el cálculo es el mismo que se usa en toda la app.
+  const split = whOrigin.trim() !== '' || whDest.trim() !== ''
+  const draft: Movement | null =
+    valid && !trade
+      ? {
+          id: '', createdAt: '', updatedAt: '', assetId, type, date, amount: am!, currency, fxRate: fx!, fees: fe!,
+          withholding: split ? '0' : wh!,
+          ...(split
+            ? {
+                withholdingOrigin: whO ?? '0', withholdingOriginCurrency: whOriginCur ?? currency,
+                withholdingDest: whD ?? '0', withholdingDestCurrency: whDestCur ?? currency,
+              }
+            : {}),
+          netEur: netRaw ?? undefined,
+        }
+      : null
+  const income = draft ? incomeBreakdown(draft) : null
+  if (income) {
+    total = formatMoney(income.netEur, 'EUR')
   }
   const totalLabel = type === 'compra' ? 'Total pagado' : type === 'venta' ? 'Total recibido' : 'Neto cobrado'
+  const currencyName = (c: string) => (c === 'EUR' ? 'Euros (€)' : c === 'USD' ? 'Dólares ($)' : c)
+  const withholdingCurrencies = [...new Set([currency, 'EUR'])]
+  /** Como en compras y ventas: si cambia un dato del que sale el neto y no se ha tocado el neto, se recalcula. */
+  function editIncome(set: (v: string) => void, value: string) {
+    set(value)
+    if (movement && !trade && !netTouched) setNetPaid('')
+  }
   function edit(set: (v: string) => void, value: string) {
     set(value)
     if (movement && trade && !totalTouched) setTotalPaid('')
@@ -187,7 +225,17 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
           fees: feesStored,
           // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
           totalEur: trade && totalRaw ? totalRaw : undefined,
-          withholding: trade ? '0' : wh!,
+          // Con retenciones separadas, la total se guarda también (en la divisa del movimiento) para versiones anteriores.
+          withholding: trade ? '0' : split ? income!.withholdingEur.mul(d(fx!)).toDecimalPlaces(8).toString() : wh!,
+          ...(!trade && split
+            ? {
+                withholdingOrigin: whO ?? '0',
+                withholdingOriginCurrency: whOriginCur ?? currency,
+                withholdingDest: whD ?? '0',
+                withholdingDestCurrency: whDestCur ?? currency,
+              }
+            : {}),
+          netEur: !trade && netRaw ? netRaw : undefined,
           account: account.trim() || undefined,
           note: note.trim() || undefined,
         },
@@ -375,14 +423,9 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
       ) : (
         <>
           <div className="grid-2">
-            <Field label={`Importe bruto (${currency})`}>
-              <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={bad('amount')} />
+            <Field label={`Importe bruto (${currency})`} hint="Antes de retenciones">
+              <input inputMode="decimal" value={amount} onChange={(e) => editIncome(setAmount, e.target.value)} aria-invalid={bad('amount')} />
             </Field>
-            <Field label={`Retención (${currency})`} hint="Origen y destino">
-              <input inputMode="decimal" value={withholding} onChange={(e) => setWithholding(e.target.value)} placeholder="0" aria-invalid={bad('withholding')} />
-            </Field>
-          </div>
-          <div className="grid-2">
             <Field
               label="Divisa del importe"
               hint={
@@ -391,15 +434,17 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
                   : 'La moneda en la que te lo pagan'
               }
             >
-              <select value={currency} onChange={(e) => setCurrencyChoice(e.target.value)}>
+              <select value={currency} onChange={(e) => editIncome(setCurrencyChoice, e.target.value)}>
                 {currencyOptions.map((c) => (
                   <option key={c} value={c}>
-                    {c === 'EUR' ? 'Euros (€)' : c === 'USD' ? 'Dólares ($)' : c}
+                    {currencyName(c)}
                   </option>
                 ))}
               </select>
             </Field>
-            {needsFx && (
+          </div>
+          {needsFx && (
+            <div className="grid-2">
               <Field
                 label="Tipo de cambio"
                 hint={ecbNow && !fxRaw ? `Del BCE (${dayFmt.format(new Date(ecbNow.date + 'T12:00:00'))})` : `${currency} por 1 EUR ese día`}
@@ -407,16 +452,66 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
                 <input
                   inputMode="decimal"
                   value={fxRate}
-                  onChange={(e) => setFxRate(e.target.value)}
+                  onChange={(e) => editIncome(setFxRate, e.target.value)}
                   placeholder={ecbNow ? toInputValue(ecbNow.rate) : '1,0850'}
                   aria-invalid={bad('fx')}
                 />
               </Field>
-            )}
+            </div>
+          )}
+          <div className="grid-2">
+            <Field label="Retención en origen" hint="La del país del valor (p. ej. EE. UU.)">
+              <input inputMode="decimal" value={whOrigin} onChange={(e) => editIncome(setWhOrigin, e.target.value)} placeholder="0" aria-invalid={bad('whOrigin')} />
+            </Field>
+            <Field label="Divisa de esa retención">
+              <select value={whOriginCur ?? currency} onChange={(e) => editIncome(setWhOriginCur, e.target.value)}>
+                {withholdingCurrencies.map((c) => (
+                  <option key={c} value={c}>
+                    {currencyName(c)}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
           <div className="grid-2">
+            <Field label="Retención en España" hint="La que practica el bróker en España">
+              <input inputMode="decimal" value={whDest} onChange={(e) => editIncome(setWhDest, e.target.value)} placeholder="0" aria-invalid={bad('whDest')} />
+            </Field>
+            <Field label="Divisa de esa retención">
+              <select value={whDestCur ?? currency} onChange={(e) => editIncome(setWhDestCur, e.target.value)}>
+                {withholdingCurrencies.map((c) => (
+                  <option key={c} value={c}>
+                    {currencyName(c)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {withholding.trim() !== '' && (
+            <div className="grid-2">
+              <Field label={`Retención sin repartir (${currency})`} hint="Apuntada antes de separar origen y España. Repártela arriba para la doble imposición.">
+                <input inputMode="decimal" value={withholding} onChange={(e) => editIncome(setWithholding, e.target.value)} aria-invalid={bad('withholding')} />
+              </Field>
+            </div>
+          )}
+          <div className="grid-2">
             <Field label={`Comisiones (${currency})`} hint="Incluye cánones y gastos">
-              <input inputMode="decimal" value={fees} onChange={(e) => setFees(e.target.value)} placeholder="0" aria-invalid={bad('fees')} />
+              <input inputMode="decimal" value={fees} onChange={(e) => editIncome(setFees, e.target.value)} placeholder="0" aria-invalid={bad('fees')} />
+            </Field>
+            <Field
+              label="Neto cobrado (€)"
+              hint={netRaw ? 'Lo que te ingresaron' : movement?.netEur && !netTouched ? 'Recalculado con tus cambios' : 'Calculado; escríbelo si tu bróker lo muestra'}
+            >
+              <input
+                inputMode="decimal"
+                value={netPaid}
+                onChange={(e) => {
+                  setNetTouched(true)
+                  setNetPaid(e.target.value)
+                }}
+                placeholder={income && !netRaw ? toInputValue(income.netEur.toDecimalPlaces(2).toString()) : undefined}
+                aria-invalid={bad('net')}
+              />
             </Field>
           </div>
         </>
@@ -447,6 +542,14 @@ export function MovementForm({ movement, assets, movements, defaultAssetId, onCl
       {trade && t?.mismatchEur && !t.inconsistent && (
         <p className="small muted">
           Los datos no cuadran por {formatMoney(t.mismatchEur.abs(), 'EUR')}. Se guardará el total que has puesto, que es el importe real.
+        </p>
+      )}
+      {income && netRaw && !split && withholding.trim() === '' && !income.unclassifiedEur.isZero() && (
+        <p className="small muted">Con el neto que has puesto, la retención total sale {formatMoney(income.unclassifiedEur, 'EUR')}.</p>
+      )}
+      {income?.mismatchEur && (
+        <p className="small muted">
+          El neto no cuadra con bruto − retenciones − comisiones por {formatMoney(income.mismatchEur.abs(), 'EUR')}. Se guardará el neto que has puesto, que es el importe real.
         </p>
       )}
       {total && (

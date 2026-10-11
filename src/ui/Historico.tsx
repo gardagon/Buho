@@ -315,7 +315,9 @@ function AssetDetail({ a }: { a: AssetYear }) {
               <Lines
                 rows={[
                   ['Bruto', formatMoney(i.grossEur)],
-                  ['Retención', formatMoney(i.withholdingEur)],
+                  ...(i.originEur.isZero() ? [] : ([['Retención en origen', formatMoney(i.originEur)]] as [string, string][])),
+                  ...(i.destEur.isZero() ? [] : ([['Retención en España', formatMoney(i.destEur)]] as [string, string][])),
+                  ...(i.unclassifiedEur.isZero() ? [] : ([['Retención', formatMoney(i.unclassifiedEur)]] as [string, string][])),
                   ...(i.feesEur.isZero() ? [] : ([['Comisiones', formatMoney(i.feesEur)]] as [string, string][])),
                   ['Neto cobrado', formatMoney(i.netEur), 'gain'],
                 ]}

@@ -1,3 +1,4 @@
+import { incomeBreakdown } from './income'
 import { Decimal, d } from './numbers'
 import { buyCostEur, sellProceedsEur, toEur } from './portfolio'
 import type { Movement, PricePoint, QuoteDay, FxRates } from './types'
@@ -107,7 +108,7 @@ export function periodPerformance(args: {
       } else if (m.date <= args.today) {
         if (m.type === 'compra') bought = bought.plus(buyCostEur(m))
         else if (m.type === 'venta') sold = sold.plus(sellProceedsEur(m))
-        else income = income.plus(toEur(d(m.amount).minus(d(m.withholding)).minus(d(m.fees)), m.fxRate))
+        else income = income.plus(incomeBreakdown(m).netEur)
       }
     }
     const base: PeriodResult = {

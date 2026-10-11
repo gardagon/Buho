@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { d, formatMoney, formatQuantity } from '../../domain/numbers'
+import { incomeBreakdown } from '../../domain/income'
 import { toEur } from '../../domain/portfolio'
 import { MOVEMENT_TYPES, type Asset, type Movement } from '../../domain/types'
 import { useTradeChecks } from '../hooks'
@@ -20,7 +21,7 @@ function netAmount(m: Movement) {
   if (m.type === 'venta' && m.totalEur) return d(m.totalEur)
   if (m.type === 'compra') return d(m.quantity).mul(d(m.price)).plus(d(m.fees)).neg()
   if (m.type === 'venta') return d(m.quantity).mul(d(m.price)).minus(d(m.fees))
-  return d(m.amount).minus(d(m.withholding)).minus(d(m.fees))
+  return incomeBreakdown(m).netEur
 }
 
 export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter }: Props) {
@@ -72,7 +73,7 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
                 const net = netAmount(m)
                 const check = checks.get(m.id)
                 // Con el total real en EUR, el importe ya está en euros.
-                const netCurrency = m.totalEur && (m.type === 'compra' || m.type === 'venta') ? 'EUR' : m.currency
+                const netCurrency = m.type === 'dividendo' || m.type === 'cupon' || (m.totalEur && (m.type === 'compra' || m.type === 'venta')) ? 'EUR' : m.currency
                 return (
                   <li key={m.id}>
                     <button className="row" onClick={() => onOpen(m)}>
@@ -84,12 +85,18 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
                         <span className={`tag ${m.type}`}>{MOVEMENT_TYPES[m.type]}</span>{' '}
                         {m.quantity && m.price
                           ? `${formatQuantity(m.quantity)} × ${formatMoney(m.price, m.currency)}`
-                          : m.withholding !== '0'
-                            ? `Retención ${formatMoney(m.withholding, m.currency)}`
+                          : m.type !== 'compra' && m.type !== 'venta' && !incomeBreakdown(m).withholdingEur.isZero()
+                            ? `Retención ${formatMoney(incomeBreakdown(m).withholdingEur)}`
                             : ''}
                       </span>
                       <span className="row-sub row-end num">
-                        {netCurrency !== 'EUR' ? formatMoney(toEur(net.abs(), m.fxRate)) : (m.account ?? '')}
+                        {m.type === 'dividendo' || m.type === 'cupon'
+                          ? m.currency !== 'EUR'
+                            ? `Bruto ${formatMoney(m.amount ?? '0', m.currency)}`
+                            : (m.account ?? '')
+                          : netCurrency !== 'EUR'
+                            ? formatMoney(toEur(net.abs(), m.fxRate))
+                            : (m.account ?? '')}
                       </span>
                       {check && (
                         <span className="row-sub row-note loss num">

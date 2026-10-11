@@ -138,8 +138,19 @@ export interface Movement extends SyncedRecord {
   totalEur?: DecimalString
   /** Comisiones y gastos, en la divisa del movimiento. */
   fees: DecimalString
-  /** Retención en origen y/o destino, en la divisa del movimiento. */
+  /**
+   * Retención total, en la divisa del movimiento. En dividendos y cupones con las retenciones
+   * separadas (abajo) vale la suma, para que las versiones anteriores sigan viendo el mismo neto.
+   */
   withholding: DecimalString
+  /** Dividendo/cupón: retención en el país de origen del valor, con su divisa (por defecto, la del movimiento). Opcional. */
+  withholdingOrigin?: DecimalString
+  withholdingOriginCurrency?: string
+  /** Dividendo/cupón: retención en España (a cuenta del IRPF), con su divisa (por defecto, la del movimiento). Opcional. */
+  withholdingDest?: DecimalString
+  withholdingDestCurrency?: string
+  /** Dividendo/cupón: lo que el bróker ingresó realmente, en EUR. Si existe, manda sobre bruto − retenciones − comisiones. Opcional. */
+  netEur?: DecimalString
   account?: string
   note?: string
 }

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { d, formatMoney, formatQuantity } from '../domain/numbers'
+import { incomeBreakdown } from '../domain/income'
 import { toEur, type Portfolio } from '../domain/portfolio'
 import { yearReport } from '../domain/sales'
 import { MOVEMENT_TYPES, type Asset, type Movement } from '../domain/types'
@@ -26,7 +27,6 @@ export function MovementDetail({ movement: m, asset, portfolio, movements, onClo
   const report = useMemo(() => yearReport(portfolio, movements, m.date.slice(0, 4)), [portfolio, movements, m.date])
   const assetYear = report.assets.find((a) => a.asset.id === m.assetId)
   const sale = m.type === 'venta' ? assetYear?.sales.find((s) => s.movementId === m.id) : undefined
-  const income = m.type === 'dividendo' || m.type === 'cupon' ? assetYear?.incomes.find((i) => i.movementId === m.id) : undefined
 
   const rows: ([string, string] | [string, string, string | undefined])[] = []
   if (m.type === 'compra') {
@@ -36,15 +36,23 @@ export function MovementDetail({ movement: m, asset, portfolio, movements, onClo
     if (m.currency !== 'EUR') rows.push(['Cambio', formatQuantity(m.fxRate)])
     rows.push(['Importe', formatMoney(gross, m.currency)], ['Comisiones', formatMoney(m.fees, m.currency)], ['Total pagado', formatMoney(total)])
   } else if (!sale) {
-    const gross = d(m.amount ?? '0')
-    const net = income?.netEur ?? toEur(gross.minus(d(m.withholding)).minus(d(m.fees)), m.fxRate)
+    const b = incomeBreakdown(m)
+    const split = m.withholdingOrigin !== undefined || m.withholdingDest !== undefined
     if (m.currency !== 'EUR') rows.push(['Cambio', formatQuantity(m.fxRate)])
-    rows.push(
-      ['Bruto', formatMoney(gross, m.currency)],
-      ['Retención', formatMoney(m.withholding, m.currency)],
-      ['Comisiones', formatMoney(m.fees, m.currency)],
-      ['Neto cobrado', m.currency === 'EUR' ? formatMoney(net) : formatMoney(net) + ' (EUR)', 'gain'],
-    )
+    rows.push(['Bruto', formatMoney(m.amount ?? '0', m.currency) + (m.currency !== 'EUR' ? ` (${formatMoney(b.grossEur)})` : '')])
+    if (split) {
+      const part = (label: string, v: string | undefined, c: string | undefined, e: typeof b.grossEur) => {
+        if (v === undefined || d(v).isZero()) return
+        const cur = c ?? m.currency
+        rows.push([label, formatMoney(v, cur) + (cur !== 'EUR' ? ` (${formatMoney(e)})` : '')])
+      }
+      part('Retención en origen', m.withholdingOrigin, m.withholdingOriginCurrency, b.originEur)
+      part('Retención en España', m.withholdingDest, m.withholdingDestCurrency, b.destEur)
+    } else if (!b.unclassifiedEur.isZero()) {
+      rows.push(['Retención', formatMoney(b.unclassifiedEur)])
+    }
+    if (!b.feesEur.isZero()) rows.push(['Comisiones', formatMoney(b.feesEur)])
+    rows.push(['Neto cobrado', formatMoney(b.netEur), 'gain'])
   }
 
   return (

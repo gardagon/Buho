@@ -93,14 +93,17 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
   }
 
   // ---------- Dividendos y cupones ----------
-  const income: Cell[][] = [head('Valor', 'Fecha', 'Tipo', 'Bruto (€)', 'Retención (€)', 'Comisiones (€)', 'Neto (€)')]
+  const income: Cell[][] = [head('Valor', 'Fecha', 'Tipo', 'Bruto (€)', 'Retención en origen (€)', 'Retención en España (€)', 'Retención sin repartir (€)', 'Comisiones (€)', 'Neto (€)')]
   for (const a of r.assets) {
     for (const i of a.incomes) {
       const row = income.length + 1
       income.push([
         a.asset.name, { date: i.date }, i.type === 'cupon' ? 'Cupón' : 'Dividendo',
-        eur(i.grossEur), eur(i.withholdingEur), eur(i.feesEur),
-        { f: `D${row}-E${row}-F${row}`, v: n(i.netEur), style: 'eur' },
+        eur(i.grossEur), eur(i.originEur), eur(i.destEur), eur(i.unclassifiedEur), eur(i.feesEur),
+        // Con el neto real puesto a mano que no cuadra, se escribe el valor (es el importe real) y no la fórmula.
+        i.grossEur.minus(i.withholdingEur).minus(i.feesEur).minus(i.netEur).abs().gt(0.005)
+          ? eur(i.netEur)
+          : { f: `D${row}-E${row}-F${row}-G${row}-H${row}`, v: n(i.netEur), style: 'eur' },
       ])
     }
   }
@@ -146,7 +149,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
   return [
     { name: 'Resumen', rows: summary, widths: [34, 12, 15, 8, 18, 18, 16, 12, 20, 14, 20, 18], freezeHeader: true },
     { name: 'Ventas (detalle)', rows: sales, widths: [34, 12, 15, 13, 12, 14, 10, 12, 16, 15, 16, 13, 14, 10, 18, 14, 12, 10, 16], freezeHeader: true },
-    { name: 'Dividendos y cupones', rows: income, widths: [34, 13, 12, 14, 14, 14, 14], freezeHeader: true },
+    { name: 'Dividendos y cupones', rows: income, widths: [34, 13, 12, 14, 16, 16, 16, 14, 14], freezeHeader: true },
     ...(tax ? [{ name: 'Hacienda (estimación)', rows: taxRows, widths: [62, 18, 14, 20, 16] }] : []),
     { name: 'Notas', rows: notes, widths: [120] },
   ]

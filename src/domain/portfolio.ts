@@ -1,3 +1,4 @@
+import { incomeBreakdown } from './income'
 import { Decimal, d } from './numbers'
 import type { Asset, Movement } from './types'
 
@@ -61,6 +62,11 @@ export interface IncomeEntry {
   type: 'dividendo' | 'cupon'
   grossEur: Decimal
   withholdingEur: Decimal
+  /** Reparto de la retención: país de origen, España y sin clasificar (movimientos anteriores a la separación). */
+  originEur: Decimal
+  destEur: Decimal
+  unclassifiedEur: Decimal
+  feesEur: Decimal
   netEur: Decimal
 }
 
@@ -182,16 +188,19 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
         matched,
       })
     } else {
-      const grossEur = toEur(d(m.amount), m.fxRate)
-      const withholdingEur = toEur(d(m.withholding), m.fxRate)
+      const b = incomeBreakdown(m)
       income.push({
         movementId: m.id,
         asset,
         date: m.date,
         type: m.type,
-        grossEur,
-        withholdingEur,
-        netEur: grossEur.minus(withholdingEur).minus(toEur(fees, m.fxRate)),
+        grossEur: b.grossEur,
+        withholdingEur: b.withholdingEur,
+        originEur: b.originEur,
+        destEur: b.destEur,
+        unclassifiedEur: b.unclassifiedEur,
+        feesEur: b.feesEur,
+        netEur: b.netEur,
       })
     }
   }

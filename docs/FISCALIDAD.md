@@ -23,7 +23,8 @@ Si se conoce lo que el bróker cobró (compra) o ingresó (venta) en EUR, ese im
 
 ### Dividendos y cupones
 - Se registran como rendimientos del capital mobiliario: bruto, retención y neto.
-- La retención incluye la de origen (país extranjero) y la de destino (España). Para la deducción por doble imposición internacional hará falta separarlas (pendiente).
+- La retención puede apuntarse **separada**: en origen (país extranjero) y en España, cada una con su divisa (euros o la del dividendo), tal como las muestra el bróker. Un movimiento antiguo con una sola retención sigue valiendo y se trata como «sin repartir».
+- El **neto cobrado** puede escribirse a mano (lo que realmente ingresó el bróker) y manda sobre bruto − retenciones − comisiones, igual que el total de una venta. Si hay neto y no hay retenciones, la retención es lo que falta hasta el bruto. Todo se calcula en `src/domain/income.ts`.
 
 ### Estimación de la cuota del ahorro (`src/domain/tax.ts`)
 Aproximación de lo que se pagaría por la base imponible del ahorro de cada año, en territorio común. Se muestra en Cartera → Histórico, dentro de cada año, con el cálculo a la vista, y en una hoja del Excel.

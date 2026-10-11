@@ -48,6 +48,10 @@ export interface IncomeLine {
   type: 'dividendo' | 'cupon'
   grossEur: Decimal
   withholdingEur: Decimal
+  /** Reparto de la retención: país de origen, España y sin clasificar. */
+  originEur: Decimal
+  destEur: Decimal
+  unclassifiedEur: Decimal
   feesEur: Decimal
   netEur: Decimal
 }
@@ -88,6 +92,10 @@ export interface YearReport {
   netEur: Decimal
   incomeGrossEur: Decimal
   withholdingEur: Decimal
+  /** Reparto de la retención del año: país de origen, España y sin clasificar. */
+  withholdingOriginEur: Decimal
+  withholdingDestEur: Decimal
+  withholdingUnclassifiedEur: Decimal
   incomeNetEur: Decimal
   dividends: IncomeTotals
   coupons: IncomeTotals
@@ -183,7 +191,10 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
       type: i.type,
       grossEur: i.grossEur,
       withholdingEur: i.withholdingEur,
-      feesEur: i.grossEur.minus(i.withholdingEur).minus(i.netEur),
+      originEur: i.originEur,
+      destEur: i.destEur,
+      unclassifiedEur: i.unclassifiedEur,
+      feesEur: i.feesEur,
       netEur: i.netEur,
     })
   }
@@ -209,6 +220,7 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
   }
 
   const allSales = list.flatMap((a) => a.sales)
+  const allIncomes = list.flatMap((a) => a.incomes)
   return {
     year,
     assets: list,
@@ -219,6 +231,9 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
     netEur: sum(allSales.map((s) => s.profitEur)),
     incomeGrossEur: sum(list.map((a) => a.incomeGrossEur)),
     withholdingEur: sum(list.map((a) => a.withholdingEur)),
+    withholdingOriginEur: sum(allIncomes.map((i) => i.originEur)),
+    withholdingDestEur: sum(allIncomes.map((i) => i.destEur)),
+    withholdingUnclassifiedEur: sum(allIncomes.map((i) => i.unclassifiedEur)),
     incomeNetEur: sum(list.map((a) => a.incomeNetEur)),
     dividends: {
       grossEur: sum(list.map((a) => a.dividends.grossEur)),
