@@ -161,8 +161,8 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
 
   // Dividendo en divisa con el neto real puesto y sin cambio escrito: el cambio que explica lo que ingresó el bróker.
   const splitNow = whOrigin.trim() !== '' || whDest.trim() !== ''
-  const derivedFx =
-    !trade && !transfer && needsFx && fxRaw === undefined && netRaw && am && fe !== null && wh !== null && whO !== null && whD !== null
+  const impliedFx =
+    !trade && !transfer && needsFx && netRaw && am && fe !== null && wh !== null && whO !== null && whD !== null
       ? impliedIncomeFx({
           amount: d(am),
           fees: d(fe),
@@ -176,6 +176,8 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
             : [{ amount: d(wh), currency }],
         })
       : undefined
+  // Con un cambio escrito a mano, manda ese; si no, el que explica el neto.
+  const derivedFx = fxRaw === undefined ? impliedFx : undefined
   const fx = transfer ? '1' : trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? derivedFx?.toString() ?? ecbNow?.rate) : '1'
 
   const errors: Record<string, boolean> = {
@@ -641,6 +643,14 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
       {income?.mismatchEur && (
         <p className="small muted">
           El neto no cuadra con bruto − retenciones − comisiones por {formatMoney(income.mismatchEur.abs(), 'EUR')}. Se guardará el neto que has puesto, que es el importe real.
+          {impliedFx && fxRaw !== undefined && (
+            <>
+              {' '}
+              <button type="button" className="link-btn" onClick={() => setFxRate(toInputValue(impliedFx.toString()))}>
+                Usar el cambio que cuadra ({toInputValue(impliedFx.toString())})
+              </button>
+            </>
+          )}
         </p>
       )}
       {total && (
