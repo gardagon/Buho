@@ -39,3 +39,9 @@ Si Buho añade funciones al proxy, «Probar» avisa de que tu versión es antigu
 - Es una fuente **no oficial**: Yahoo puede cambiar su formato, limitar las llamadas (el aviso será «Yahoo limita las llamadas») o impedir este uso en sus condiciones. Para uso personal con pocas llamadas es poco probable que haya problema, pero no hay garantía. Si deja de funcionar, la app sigue valiendo con precios manuales.
 - Las cotizaciones de Yahoo pueden llevar 15 minutos de retraso en algunas bolsas.
 - No lo uses para abrir Buho al público sin revisar antes los términos de Yahoo: cada usuario tendría que desplegar su propio proxy, o habría que cambiar de proveedor.
+
+## ETF y fondos: el ticker es el de Yahoo, no el del bróker
+
+Yahoo cubre los ETF europeos, pero cada bolsa donde cotiza tiene su propio símbolo con un sufijo: por ejemplo, el iShares Core S&P 500 UCITS ETF USD (Acc) es `SXR8.DE` en Xetra (en euros), `CSPX.L` en Londres (en dólares) y `CSSPX.MI` en Milán. Ni el ISIN ni la etiqueta del bróker (la de Trade Republic, la de ING…) sirven como ticker.
+
+En el formulario del activo, con el ISIN escrito, el botón **Buscar el ticker con el ISIN** pide a Yahoo (o a Finnhub) las bolsas donde cotiza y deja elegir una con su precio y su divisa. Para que el precio coincida con el de tu bróker, elige la bolsa en euros. En «Seguir un valor» también se puede buscar por ISIN.

@@ -95,12 +95,12 @@ export function FollowSheet({ assets, onClose, onManual }: Props) {
       }
     >
       <label className="field">
-        <span>Nombre o ticker</span>
+        <span>Nombre, ticker o ISIN</span>
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Apple, AAPL, Microsoft…"
+          placeholder="Apple, AAPL, IE00B5BMR087…"
           autoFocus
           autoCapitalize="none"
           spellCheck={false}

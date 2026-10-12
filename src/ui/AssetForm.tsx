@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { addPricePoint, deleteAsset, saveAsset } from '../data/repo'
-import { parseUserNumber } from '../domain/numbers'
+import { formatMoney, parseUserNumber } from '../domain/numbers'
 import { rateForPoint } from '../quotes/fx'
+import { useQuotes } from '../quotes/QuotesContext'
+import { searchSecurities, type SearchResult } from '../quotes/service'
 import { ASSET_TYPES, type Asset, type AssetType } from '../domain/types'
 import { Field, Sheet } from './Sheet'
 import { Spinner } from './Spinner'
@@ -49,11 +51,42 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
   // Si la divisa del activo no está en la lista, se enseña el campo para escribirla.
   const [otherCurrency, setOtherCurrency] = useState(!!asset && !(asset.currency in CURRENCIES))
   const [saving, setSaving] = useState(false)
+  // Buscar el ticker de Yahoo a partir del ISIN: cada bolsa donde cotiza el valor tiene el suyo.
+  const { hasKey, hasYahoo } = useQuotes()
+  const [finding, setFinding] = useState(false)
+  const [found, setFound] = useState<SearchResult[] | null>(null)
+  const [findError, setFindError] = useState('')
 
   const isinOk = isin.trim() === '' || /^[A-Z]{2}[A-Z0-9]{9}\d$/.test(isin.trim().toUpperCase())
   const priceParsed = manualPrice.trim() === '' ? undefined : parseUserNumber(manualPrice)
   const priceOk = manualPrice.trim() === '' || (priceParsed !== null && Number(priceParsed) > 0)
   const valid = priceOk && name.trim() !== '' && /^[A-Z]{3}$/.test(currency.trim().toUpperCase()) && isinOk
+
+  async function findByIsin() {
+    setFinding(true)
+    setFindError('')
+    try {
+      const results = await searchSecurities(isin.trim().toUpperCase())
+      setFound(results)
+      if (results.length === 0) setFindError('No se ha encontrado ese ISIN. Prueba con el nombre del valor o escribe el ticker a mano.')
+    } catch (e) {
+      setFound(null)
+      setFindError(e instanceof Error ? e.message : 'No se pudo buscar. Comprueba la conexión.')
+    } finally {
+      setFinding(false)
+    }
+  }
+
+  function pick(r: SearchResult) {
+    setTicker(r.hit.symbol)
+    const c = (r.quote?.currency ?? r.hit.currency).toUpperCase()
+    setCurrency(c)
+    setOtherCurrency(!(c in CURRENCIES))
+    setType(r.hit.type)
+    if (!name.trim()) setName(r.hit.name)
+    if (!market.trim() && r.hit.exchange) setMarket(r.hit.exchange)
+    setFound(null)
+  }
 
   async function submit() {
     setTried(true)
@@ -189,7 +222,7 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
         </Field>
       )}
       <div className="grid-2">
-        <Field label="Ticker" hint="Para las cotizaciones">
+        <Field label="Ticker" hint="El de Yahoo, con la bolsa: SXR8.DE, IBE.MC. No sirve la etiqueta del bróker.">
           <input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="IBE.MC" autoCapitalize="characters" />
         </Field>
         <Field label="ISIN" hint={tried && !isinOk ? 'El ISIN tiene 12 caracteres, p. ej. ES0144580Y14' : undefined}>
@@ -203,6 +236,35 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
           />
         </Field>
       </div>
+      {isin.trim().length === 12 && isinOk && (hasYahoo || hasKey) && (
+        <div className="stack">
+          <button type="button" className="btn small" onClick={() => void findByIsin()} disabled={finding}>
+            {finding ? 'Buscando…' : 'Buscar el ticker con el ISIN'}
+          </button>
+          {findError && <p className="error-text">{findError}</p>}
+          {found && found.length > 0 && (
+            <>
+              <p className="small muted" style={{ margin: 0 }}>
+                Cada bolsa tiene su símbolo. Elige la que uses (la de euros suele coincidir con el precio de tu bróker).
+              </p>
+              <ul className="rows">
+                {found.map((r) => (
+                  <li key={r.hit.symbol}>
+                    <button type="button" className="row" onClick={() => pick(r)}>
+                      <span className="row-title">{r.hit.name}</span>
+                      <span className="row-end num">{r.quote ? formatMoney(r.quote.price, r.quote.currency) : ''}</span>
+                      <span className="row-sub">
+                        {r.hit.symbol} · {r.hit.exchange ?? 'sin bolsa'}
+                      </span>
+                      <span className="row-sub row-end">Elegir</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
       {asset ? (
         onOpenPrices && (
           <button type="button" className="btn" onClick={onOpenPrices} disabled={saving}>

@@ -726,3 +726,5 @@ main.slide-right { animation: enter-from-left 0.2s ease-out; }
 /* ---------- Aviso junto al nombre de un valor ---------- */
 
 .warn-icon { display: inline-block; vertical-align: -3px; margin-left: 6px; color: var(--amber); }
+
+.stack { display: grid; gap: 10px; }
