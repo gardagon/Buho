@@ -15,7 +15,7 @@ En cada venta se consideran vendidos primero los títulos comprados antes (art. 
 - Los **impuestos de la operación** (p. ej. la tasa sobre transacciones financieras en valores españoles, el timbre británico…) se apuntan aparte, en `Movement.taxes`, y pesan igual que las comisiones en el coste y el valor de transmisión. Separarlos no cambia ningún cálculo: es para reflejar lo que dice el bróker. Los movimientos anteriores lo llevan todo como comisiones hasta que se reparta a mano.
 
 ### Importe real en EUR (`Movement.totalEur`)
-Si se conoce lo que el bróker cobró (compra) o ingresó (venta) en EUR, ese importe manda: es el valor de adquisición o de transmisión, con comisiones y cambio del bróker ya incluidos. Si no se conoce, se calcula como cantidad × precio ± comisiones ÷ tipo de cambio. El formulario deduce la incógnita que falte (comisiones, precio o cambio efectivo) con `src/domain/trade.ts`.
+Si se conoce lo que el bróker cobró (compra) o ingresó (venta) en EUR, ese importe manda: es el valor de adquisición o de transmisión, con comisiones y cambio del bróker ya incluidos. Si no se conoce, se calcula como cantidad × precio ± comisiones ÷ tipo de cambio. El formulario deduce la incógnita que falte (comisiones, precio o cambio efectivo) con `src/domain/trade.ts`. En una operación en divisa con el total y las comisiones puestos y el cambio vacío, se calcula el cambio efectivo (no el del BCE) para que todo cuadre con lo que cobró el bróker; si se escribe un cambio con pocos decimales, el aviso de descuadre ofrece el que cuadra. Ojo: los brókeres españoles dan el cambio en euros por dólar (0,9286) y Buho lo pide al revés, en dólares por euro (1,0768).
 
 ### Divisa
 - Coste en EUR = importe en divisa ÷ tipo de cambio de la fecha de compra.

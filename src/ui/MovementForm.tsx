@@ -160,16 +160,26 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const fxRaw = fxRate.trim() === '' ? undefined : parseUserNumber(fxRate)
 
   // Compras y ventas: lo que falta se calcula con lo que sí se ha puesto.
+  const tradeInput = {
+    type: type as 'compra' | 'venta',
+    currency,
+    quantity: q ? d(q) : undefined,
+    price: pr ? d(pr) : undefined,
+    feesEur: feesRaw ? d(feesRaw) : undefined,
+    taxesEur: taxesRaw ? d(taxesRaw) : undefined,
+    totalEur: totalRaw ? d(totalRaw) : undefined,
+  }
+  // Operación en divisa con el total y las comisiones puestos: el cambio efectivo es el que cuadra con lo que cobró el
+  // bróker (el del BCE rara vez coincide, y escribirlo a mano con pocos decimales descuadra unos céntimos).
+  const impliedTrade =
+    trade && needsFx && totalRaw && (feesRaw !== undefined || taxesRaw !== undefined)
+      ? completeTrade({ ...tradeInput, fxRate: undefined })
+      : null
+  const impliedTradeFx = impliedTrade?.derived.fxRate ? impliedTrade.fxRate : undefined
   const t = trade
     ? completeTrade({
-        type: type as 'compra' | 'venta',
-        currency,
-        quantity: q ? d(q) : undefined,
-        price: pr ? d(pr) : undefined,
-        fxRate: fxRaw ? d(fxRaw) : ecbNow ? d(ecbNow.rate) : undefined,
-        feesEur: feesRaw ? d(feesRaw) : undefined,
-        taxesEur: taxesRaw ? d(taxesRaw) : undefined,
-        totalEur: totalRaw ? d(totalRaw) : undefined,
+        ...tradeInput,
+        fxRate: fxRaw ? d(fxRaw) : (impliedTradeFx ?? (ecbNow ? d(ecbNow.rate) : undefined)),
       })
     : null
   // ¿El precio cuadra con lo que cotizó ese día? (con el histórico descargado)
@@ -473,7 +483,9 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
                 hint={
                   fxRaw
                     ? `${currency} por 1 EUR`
-                    : ecbNow
+                    : impliedTradeFx
+                      ? 'Calculado con el total y las comisiones: el que explica lo que te cobraron'
+                      : ecbNow
                       ? `Del BCE (${dayFmt.format(new Date(ecbNow.date + 'T12:00:00'))}). Puedes escribir el de tu bróker.`
                       : t?.derived.fxRate
                         ? 'Calculado: incluye comisiones'
@@ -484,7 +496,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
                   inputMode="decimal"
                   value={fxRate}
                   onChange={(e) => edit(setFxRate, e.target.value)}
-                  placeholder={ecbNow ? toInputValue(ecbNow.rate) : (calc(t?.derived.fxRate ? t.fxRate : undefined, 6) ?? '1,0850')}
+                  placeholder={impliedTradeFx ? calc(impliedTradeFx, 6) : ecbNow ? toInputValue(ecbNow.rate) : (calc(t?.derived.fxRate ? t.fxRate : undefined, 6) ?? '1,0850')}
                   aria-invalid={bad('fx')}
                 />
               </Field>
@@ -666,6 +678,14 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
       {trade && t?.mismatchEur && !t.inconsistent && (
         <p className="small muted">
           Los datos no cuadran por {formatMoney(t.mismatchEur.abs(), 'EUR')}. Se guardará el total que has puesto, que es el importe real.
+          {impliedTradeFx && fxRaw && (
+            <>
+              {' '}
+              <button type="button" className="link-btn" onClick={() => setFxRate(toInputValue(impliedTradeFx.toString()))}>
+                Usar el cambio que cuadra ({toInputValue(impliedTradeFx.toString())})
+              </button>
+            </>
+          )}
         </p>
       )}
       {income && netRaw && !split && withholding.trim() === '' && !income.unclassifiedEur.isZero() && (

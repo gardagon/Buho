@@ -107,4 +107,20 @@ describe('completeTrade', () => {
       expect(r.totalEur?.toString()).toBe('997')
     })
   })
+
+  it('compra en dólares de ING: con el total y las comisiones, el cambio efectivo cuadra al céntimo', () => {
+    // 1.000 títulos × 16,649 $ = 16.649 $. Comisiones 18,34 + 77,25 (cambio de divisa) = 95,59 €. Total 15.557,11 €.
+    // Parte en euros: 15.557,11 − 95,59 = 15.461,52 € → cambio = 16.649 ÷ 15.461,52 = 1,076802 $/€.
+    const r = completeTrade({
+      type: 'compra', currency: 'USD', quantity: D('1000'), price: D('16.649'), feesEur: D('95.59'), totalEur: D('15557.11'),
+    })
+    expect(r.fxRate?.toString()).toBe('1.076802')
+    expect(r.derived.fxRate).toBe(true)
+    expect(r.mismatchEur).toBeUndefined()
+    // Con el cambio recortado a cuatro decimales (1,0768) salen 15.557,14 €: 3 céntimos de diferencia.
+    const r2 = completeTrade({
+      type: 'compra', currency: 'USD', quantity: D('1000'), price: D('16.649'), fxRate: D('1.0768'), feesEur: D('95.59'), totalEur: D('15557.11'),
+    })
+    expect(r2.mismatchEur?.abs().toFixed(2)).toBe('0.03')
+  })
 })
