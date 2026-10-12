@@ -3,6 +3,7 @@ import { addPricePoint, deleteAsset, saveAsset } from '../data/repo'
 import { formatMoney, parseUserNumber } from '../domain/numbers'
 import { rateForPoint } from '../quotes/fx'
 import { useQuotes } from '../quotes/QuotesContext'
+import { sameFund, searchQueries } from '../quotes/names'
 import { searchSecurities, type SearchResult } from '../quotes/service'
 import { ASSET_TYPES, type Asset, type AssetType } from '../domain/types'
 import { Field, Sheet } from './Sheet'
@@ -24,8 +25,6 @@ export const CURRENCIES: Record<string, string> = {
 }
 const OTHER = '__otra'
 
-/** Nombre sin mayúsculas ni signos, para reconocer el mismo fondo cotizando en otra bolsa. */
-const nameKey = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
 interface Props {
   asset?: Asset
@@ -69,15 +68,22 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
     setFinding(true)
     setFindError('')
     try {
-      // Yahoo devuelve una sola cotización por ISIN (la principal). Las demás bolsas del mismo valor salen buscando su nombre.
+      // Yahoo devuelve una sola cotización por ISIN (la principal). Las demás bolsas del mismo fondo salen buscando su
+      // nombre, con el nombre abreviado que Yahoo les da en cada una (p. ej. «ISHSIII-CORE MSCI WORLD U.ETF» en Xetra).
       const byIsin = await searchSecurities(isin.trim().toUpperCase())
       let results = byIsin
       if (byIsin.length > 0) {
         try {
-          const key = nameKey(byIsin[0].hit.name)
-          const byName = await searchSecurities(byIsin[0].hit.name)
+          const reference = byIsin[0].hit.name
+          const lists = await Promise.all(searchQueries(reference).map((q) => searchSecurities(q).catch(() => [])))
           const seen = new Set(byIsin.map((r) => r.hit.symbol))
-          results = [...byIsin, ...byName.filter((r) => !seen.has(r.hit.symbol) && nameKey(r.hit.name) === key)]
+          const more: SearchResult[] = []
+          for (const r of lists.flat()) {
+            if (seen.has(r.hit.symbol) || !sameFund(reference, r.hit.name)) continue
+            seen.add(r.hit.symbol)
+            more.push(r)
+          }
+          results = [...byIsin, ...more]
         } catch {
           /* con una sola bolsa basta para seguir */
         }
