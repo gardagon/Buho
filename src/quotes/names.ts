@@ -23,6 +23,9 @@ export function sameFund(reference: string, candidate: string): boolean {
   if (need.length === 0) return false
   const text = compact(candidate)
   if (!need.every((w) => text.includes(w.replace(/[^a-z0-9]/g, '')))) return false
+  // Un fondo europeo (UCITS) no es el ETF estadounidense del mismo índice (IVV frente a CSPX). Las bolsas alemanas
+  // abrevian «UCITS ETF» a «U.ETF».
+  if (compact(reference).includes('ucits') && !(text.includes('ucits') || text.includes('uetf'))) return false
   const refWords = new Set(words(reference))
   const candWords = new Set(words(candidate))
   // Otra clase o variante (distribución, cobertura, ESG…) no es el mismo fondo.
@@ -33,4 +36,12 @@ export function sameFund(reference: string, candidate: string): boolean {
 export function searchQueries(name: string): string[] {
   const short = name.split(/ucits/i)[0].trim()
   return short && short.toLowerCase() !== name.toLowerCase() ? [name, short] : [name]
+}
+
+/** Bolsas principales primero: así las secundarias (Cboe, Santiago…) no tapan a las que se usan de verdad. */
+const MAIN = ['DE', 'AS', 'MI', 'PA', 'L', 'SW', 'MC', 'F']
+export function listingRank(symbol: string): number {
+  const suffix = symbol.includes('.') ? symbol.split('.').pop()!.toUpperCase() : ''
+  const i = MAIN.indexOf(suffix)
+  return i === -1 ? MAIN.length : i
 }

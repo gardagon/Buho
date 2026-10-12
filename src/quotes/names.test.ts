@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { distinctiveWords, sameFund, searchQueries } from './names'
+import { distinctiveWords, listingRank, sameFund, searchQueries } from './names'
 
 describe('reconocer el mismo fondo en otra bolsa', () => {
   const world = 'iShares Core MSCI World UCITS ETF USD (Acc)'
@@ -31,5 +31,17 @@ describe('reconocer el mismo fondo en otra bolsa', () => {
   it('busca por el nombre entero y por el nombre sin «UCITS ETF…»', () => {
     expect(searchQueries(world)).toEqual([world, 'iShares Core MSCI World'])
     expect(searchQueries('Apple Inc.')).toEqual(['Apple Inc.'])
+  })
+
+  it('un ETF europeo (UCITS) no es el estadounidense del mismo índice', () => {
+    expect(sameFund(sp500, 'iShares Core S&P 500 ETF')).toBe(false) // IVV
+    expect(sameFund(sp500, 'iShares Trust - iShares Core S&P 500 ETF')).toBe(false)
+    expect(sameFund(sp500, 'iShares Core S&P 500 UCITS ETF')).toBe(true) // truncado en una bolsa secundaria
+    expect(sameFund(world, 'iShares Core MSCI World UCITS E')).toBe(true) // nombre cortado a 31 caracteres
+  })
+
+  it('las bolsas principales van antes que las secundarias', () => {
+    const order = ['IVV.SN', 'EUNLD.XD', 'IWDA.L', 'IWDA.AS', 'EUNL.DE', 'X'].sort((a, b) => listingRank(a) - listingRank(b))
+    expect(order).toEqual(['EUNL.DE', 'IWDA.AS', 'IWDA.L', 'IVV.SN', 'EUNLD.XD', 'X'])
   })
 })

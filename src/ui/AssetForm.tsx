@@ -3,7 +3,7 @@ import { addPricePoint, deleteAsset, saveAsset } from '../data/repo'
 import { formatMoney, parseUserNumber } from '../domain/numbers'
 import { rateForPoint } from '../quotes/fx'
 import { useQuotes } from '../quotes/QuotesContext'
-import { sameFund, searchQueries } from '../quotes/names'
+import { listingRank, sameFund, searchQueries } from '../quotes/names'
 import { searchSecurities, type SearchResult } from '../quotes/service'
 import { ASSET_TYPES, type Asset, type AssetType } from '../domain/types'
 import { Field, Sheet } from './Sheet'
@@ -64,6 +64,39 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
   const priceOk = manualPrice.trim() === '' || (priceParsed !== null && Number(priceParsed) > 0)
   const valid = priceOk && name.trim() !== '' && /^[A-Z]{3}$/.test(currency.trim().toUpperCase()) && isinOk
 
+  const [checking, setChecking] = useState(false)
+  const [checkMsg, setCheckMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  /** Pide a Yahoo (o Finnhub) el símbolo escrito para saber, antes de guardar, si da precio. */
+  async function checkTicker() {
+    const t = ticker.trim()
+    if (!t) return
+    setChecking(true)
+    setCheckMsg(null)
+    try {
+      const results = await searchSecurities(t)
+      const hit = results.find((r) => r.hit.symbol.toUpperCase() === t.toUpperCase())
+      if (hit?.quote) {
+        setCheckMsg({ ok: true, text: `Funciona: ${hit.hit.name} (${hit.hit.exchange ?? 'bolsa desconocida'}) cotiza a ${formatMoney(hit.quote.price, hit.quote.currency)}.` })
+        setCurrency(hit.quote.currency.toUpperCase())
+        setOtherCurrency(!(hit.quote.currency.toUpperCase() in CURRENCIES))
+      } else if (hit) {
+        setCheckMsg({ ok: false, text: `Yahoo conoce ${t} (${hit.hit.name}) pero ahora no da precio. Prueba con otra bolsa del mismo fondo.` })
+      } else {
+        setCheckMsg({
+          ok: false,
+          text: results.length
+            ? `Yahoo no tiene ${t}. Parecidos: ${results.slice(0, 4).map((r) => r.hit.symbol).join(', ')}.`
+            : `Yahoo no tiene ${t}. Prueba con el botón de buscar con el ISIN, o con el nombre en «Seguir un valor».`,
+        })
+      }
+    } catch (e) {
+      setCheckMsg({ ok: false, text: e instanceof Error ? e.message : 'No se pudo comprobar. Comprueba la conexión.' })
+    } finally {
+      setChecking(false)
+    }
+  }
+
   async function findByIsin() {
     setFinding(true)
     setFindError('')
@@ -83,7 +116,7 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
             seen.add(r.hit.symbol)
             more.push(r)
           }
-          results = [...byIsin, ...more]
+          results = [...byIsin, ...more].sort((a, b) => listingRank(a.hit.symbol) - listingRank(b.hit.symbol))
         } catch {
           /* con una sola bolsa basta para seguir */
         }
@@ -244,7 +277,15 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
       )}
       <div className="grid-2">
         <Field label="Ticker" hint="El de Yahoo, con la bolsa: SXR8.DE, IBE.MC. No sirve la etiqueta del bróker.">
-          <input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="IBE.MC" autoCapitalize="characters" />
+          <input
+            value={ticker}
+            onChange={(e) => {
+              setTicker(e.target.value)
+              setCheckMsg(null)
+            }}
+            placeholder="IBE.MC"
+            autoCapitalize="characters"
+          />
         </Field>
         <Field label="ISIN" hint={tried && !isinOk ? 'El ISIN tiene 12 caracteres, p. ej. ES0144580Y14' : undefined}>
           <input
@@ -257,6 +298,14 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
           />
         </Field>
       </div>
+      {ticker.trim() !== '' && (hasYahoo || hasKey) && (
+        <div className="stack">
+          <button type="button" className="btn small" onClick={() => void checkTicker()} disabled={checking}>
+            {checking ? 'Comprobando…' : `Comprobar ${ticker.trim().toUpperCase()}`}
+          </button>
+          {checkMsg && <p className={checkMsg.ok ? 'small' : 'error-text'}>{checkMsg.text}</p>}
+        </div>
+      )}
       {isin.trim().length === 12 && isinOk && (hasYahoo || hasKey) && (
         <div className="stack">
           <button type="button" className="btn small" onClick={() => void findByIsin()} disabled={finding}>
