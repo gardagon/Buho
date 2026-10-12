@@ -21,7 +21,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
   const salesHead = head(
     'Valor', 'Ticker', 'ISIN',
     'Fecha de venta', 'Títulos vendidos', 'Precio de venta por título', 'Divisa de la venta', 'Cambio (divisa por 1 €)',
-    'Importe bruto de la venta (€)', 'Comisiones de la venta (€)', 'Valor de transmisión (€)',
+    'Importe bruto de la venta (€)', 'Comisiones e impuestos de la venta (€)', 'Valor de transmisión (€)',
     'Fecha de compra', 'Precio de compra por título', 'Divisa de la compra', 'Coste de adquisición con comisiones (€)',
     'Beneficio (€)', 'Beneficio (%)', 'Días en cartera', 'Cuenta',
   )

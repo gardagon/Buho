@@ -78,4 +78,33 @@ describe('completeTrade', () => {
     expect(r.feesEur).toBeUndefined()
     expect(r.derived).toEqual({})
   })
+
+  describe('impuestos de la operación', () => {
+    const D = (v: string | number) => new Decimal(v)
+
+    it('compra con comisión de 1 € e impuestos: el total los suma a los dos', () => {
+      // 10 títulos a 100 € = 1.000 €; comisión 1 € e impuesto 2 € (tasa sobre transacciones financieras) → total 1.003 €.
+      const r = completeTrade({ type: 'compra', currency: 'EUR', quantity: D(10), price: D(100), feesEur: D(1), taxesEur: D(2) })
+      expect(r.totalEur?.toString()).toBe('1003')
+      expect(r.perShareEur?.toString()).toBe('100.3')
+    })
+
+    it('con el total y los impuestos, las comisiones son lo que sobra', () => {
+      // Ingresaron/cobraron 1.003 €: 1.000 de bruto, 2 de impuestos y el resto (1 €) son las comisiones.
+      const r = completeTrade({ type: 'compra', currency: 'EUR', quantity: D(10), price: D(100), taxesEur: D(2), totalEur: D(1003) })
+      expect(r.feesEur?.toString()).toBe('1')
+      expect(r.derived.feesEur).toBe(true)
+    })
+
+    it('con el total y sin desglosar, todo sigue saliendo como comisión (como antes)', () => {
+      const r = completeTrade({ type: 'compra', currency: 'EUR', quantity: D(10), price: D(100), totalEur: D(1003) })
+      expect(r.feesEur?.toString()).toBe('3')
+    })
+
+    it('en una venta, comisiones e impuestos restan', () => {
+      // 10 × 100 = 1.000 − 1 − 2 = 997 €.
+      const r = completeTrade({ type: 'venta', currency: 'EUR', quantity: D(10), price: D(100), feesEur: D(1), taxesEur: D(2) })
+      expect(r.totalEur?.toString()).toBe('997')
+    })
+  })
 })

@@ -34,7 +34,10 @@ export interface SaleDetail {
   account?: string
   /** Cantidad × precio pasada a EUR, antes de comisiones. */
   grossEur: Decimal
+  /** Comisiones e impuestos de la venta juntos (lo que separa el importe bruto del valor de transmisión). */
   feesEur: Decimal
+  /** De ellos, los impuestos (el resto son comisiones). */
+  taxesEur: Decimal
   /** Valor de transmisión: lo ingresado, ya sin comisiones. */
   proceedsEur: Decimal
   costEur: Decimal
@@ -199,6 +202,7 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
       account: m?.account,
       grossEur,
       feesEur,
+      taxesEur: m ? toEur(d(m.taxes ?? '0'), fxRate) : ZERO,
       proceedsEur: s.proceedsEur,
       costEur: s.costEur,
       profitEur: s.gainEur,

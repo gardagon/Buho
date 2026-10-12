@@ -230,4 +230,25 @@ describe('traspaso entre fondos (art. 94 LIRPF)', () => {
     ])
   })
 })
+
+describe('impuestos de la operación', () => {
+  it('suman al coste de adquisición y restan del valor de transmisión, como las comisiones', () => {
+    // Compra 10 × 100 € con 1 € de comisión y 2 € de impuestos: coste 1.003 €.
+    // Venta 10 × 110 € con 1 € de comisión y 3 € de impuestos: transmisión 1.100 − 4 = 1.096 €; ganancia 93 €.
+    const p = computePortfolio([asset('X')], [
+      mv({ assetId: 'X', type: 'compra', date: '2026-01-10', quantity: '10', price: '100', fees: '1', taxes: '2' }),
+      mv({ assetId: 'X', type: 'venta', date: '2026-06-10', quantity: '10', price: '110', fees: '1', taxes: '3' }),
+    ])
+    expect(p.sales[0].costEur.toString()).toBe('1003')
+    expect(p.sales[0].proceedsEur.toString()).toBe('1096')
+    expect(p.sales[0].gainEur.toString()).toBe('93')
+  })
+
+  it('un movimiento antiguo sin impuestos sigue dando lo mismo', () => {
+    const p = computePortfolio([asset('X')], [
+      mv({ assetId: 'X', type: 'compra', date: '2026-01-10', quantity: '10', price: '100', fees: '3' }),
+    ])
+    expect(p.positions[0].costEur.toString()).toBe('1003')
+  })
+})
 })

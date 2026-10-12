@@ -23,6 +23,8 @@ export interface TradeInput {
   fxRate?: Decimal
   /** Comisiones y gastos, en EUR. */
   feesEur?: Decimal
+  /** Impuestos de la operación (p. ej. tasa sobre transacciones financieras), en EUR. Se tratan como las comisiones. */
+  taxesEur?: Decimal
   /** Lo que cobraron (compra) o ingresaron (venta), en EUR. */
   totalEur?: Decimal
 }
@@ -31,6 +33,7 @@ export interface TradeResult {
   price?: Decimal
   fxRate?: Decimal
   feesEur?: Decimal
+  taxesEur?: Decimal
   totalEur?: Decimal
   /** Campos que se han calculado, para mostrarlos como sugerencia. */
   derived: { price?: boolean; fxRate?: boolean; feesEur?: boolean; totalEur?: boolean }
@@ -52,7 +55,10 @@ export function completeTrade(input: TradeInput): TradeResult {
   let { price, feesEur, totalEur } = input
   let fx = currency === 'EUR' ? new Decimal(1) : input.fxRate
   if (currency === 'EUR' || input.fxRate) res.fxRate = fx
-  Object.assign(res, { price, feesEur, totalEur })
+  const taxesEur = input.taxesEur
+  Object.assign(res, { price, feesEur, taxesEur, totalEur })
+  // Comisiones e impuestos pesan igual en el total: lo que se suma (compra) o se resta (venta) al importe.
+  const extras = () => (feesEur ?? ZERO).plus(taxesEur ?? ZERO)
 
   if (!qty || qty.lte(0)) return res
 
@@ -60,7 +66,7 @@ export function completeTrade(input: TradeInput): TradeResult {
   // (el que explica el total, con las comisiones que se hayan puesto).
   if (!fx) {
     if (price && totalEur) {
-      const grossEur = totalEur.minus(feesEur?.mul(s) ?? ZERO)
+      const grossEur = totalEur.minus(extras().mul(s))
       if (grossEur.gt(0)) {
         fx = round(qty.mul(price).div(grossEur), 6)
         res.fxRate = fx
@@ -72,7 +78,7 @@ export function completeTrade(input: TradeInput): TradeResult {
 
   // Sin precio: sale del total y las comisiones.
   if (!price && totalEur) {
-    const grossEur = totalEur.minus(feesEur?.mul(s) ?? ZERO)
+    const grossEur = totalEur.minus(extras().mul(s))
     if (grossEur.gt(0)) {
       price = round(grossEur.mul(fx).div(qty), 6)
       res.price = price
@@ -85,7 +91,7 @@ export function completeTrade(input: TradeInput): TradeResult {
 
   // Con el total y sin comisiones: las comisiones son la diferencia.
   if (totalEur && !feesEur) {
-    const fees = round(totalEur.minus(grossEur).mul(s), 2)
+    const fees = round(totalEur.minus(grossEur).mul(s).minus(taxesEur ?? ZERO), 2)
     if (fees.isNeg()) {
       // Cobran menos de lo que vale (o ingresan más): no es posible con comisiones.
       res.inconsistent = true
@@ -99,12 +105,12 @@ export function completeTrade(input: TradeInput): TradeResult {
 
   // Sin total: se calcula con las comisiones que haya (o ninguna).
   if (!totalEur) {
-    totalEur = round(grossEur.plus((feesEur ?? ZERO).mul(s)), 2)
+    totalEur = round(grossEur.plus(extras().mul(s)), 2)
     res.totalEur = totalEur
     res.derived.totalEur = true
   } else if (feesEur && !res.derived.feesEur && !res.derived.fxRate && !res.derived.price) {
     // Todo puesto a mano: avisa si no cuadra (más de un céntimo).
-    const diff = totalEur.minus(grossEur.plus(feesEur.mul(s)))
+    const diff = totalEur.minus(grossEur.plus(extras().mul(s)))
     if (diff.abs().gt(0.01)) res.mismatchEur = diff
   }
 

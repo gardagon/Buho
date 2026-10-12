@@ -143,6 +143,12 @@ export interface Movement extends SyncedRecord {
   /** Comisiones y gastos, en la divisa del movimiento. */
   fees: DecimalString
   /**
+   * Compra/venta: impuestos inherentes a la operación (p. ej. la tasa sobre transacciones financieras), en la divisa
+   * del movimiento. Opcional; si falta, es 0. Como las comisiones, suman al coste de adquisición (art. 35 LIRPF) o
+   * restan del valor de transmisión. Los movimientos anteriores lo llevan todo en `fees`.
+   */
+  taxes?: DecimalString
+  /**
    * Retención total, en la divisa del movimiento. En dividendos y cupones con las retenciones
    * separadas (abajo) vale la suma, para que las versiones anteriores sigan viendo el mismo neto.
    */

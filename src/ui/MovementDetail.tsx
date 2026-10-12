@@ -33,10 +33,12 @@ export function MovementDetail({ movement: m, asset, toAsset, portfolio, movemen
   const rows: ([string, string] | [string, string, string | undefined])[] = []
   if (m.type === 'compra') {
     const gross = d(m.quantity ?? '0').mul(d(m.price ?? '0'))
-    const total = m.totalEur ? d(m.totalEur) : toEur(gross.plus(d(m.fees)), m.fxRate)
+    const total = m.totalEur ? d(m.totalEur) : toEur(gross.plus(d(m.fees)).plus(d(m.taxes ?? '0')), m.fxRate)
     rows.push(['Cantidad', formatQuantity(m.quantity ?? '0')], ['Precio', formatMoney(m.price ?? '0', m.currency)])
     if (m.currency !== 'EUR') rows.push(['Cambio', formatQuantity(m.fxRate)])
-    rows.push(['Importe', formatMoney(gross, m.currency)], ['Comisiones', formatMoney(m.fees, m.currency)], ['Total pagado', formatMoney(total)])
+    rows.push(['Importe', formatMoney(gross, m.currency)], ['Comisiones', formatMoney(m.fees, m.currency)])
+    if (m.taxes && !d(m.taxes).isZero()) rows.push(['Impuestos', formatMoney(m.taxes, m.currency)])
+    rows.push(['Total pagado', formatMoney(total)])
   } else if (m.type === 'traspaso') {
     rows.push(
       ['Fondo de origen', asset?.name ?? 'Activo eliminado'],

@@ -42,6 +42,13 @@ const KIND: Record<MovementType, { noun: string; article: 'Nueva' | 'Nuevo' }> =
   traspaso: { noun: 'traspaso', article: 'Nuevo' },
 }
 
+/** Suma de dos importes escritos por la persona, o null si alguno no es un número. */
+const sumInputs = (a: string, b: string) => {
+  const x = a.trim() === '' ? '0' : parseUserNumber(a)
+  const y = b.trim() === '' ? '0' : parseUserNumber(b)
+  return x === null || y === null ? null : d(x).plus(d(y))
+}
+
 const dayFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' })
 
 const today = () => {
@@ -64,10 +71,17 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
     if (!isTrade(movement.type)) return toInputValue(movement.fees)
     return toInputValue(toEur(d(movement.fees), movement.fxRate).toDecimalPlaces(4).toString())
   })
+  // Impuestos de la operación (p. ej. la tasa sobre transacciones financieras), en EUR como las comisiones.
+  const [taxes, setTaxes] = useState(() => {
+    if (!movement?.taxes || movement.taxes === '0') return ''
+    return toInputValue(toEur(d(movement.taxes), movement.fxRate).toDecimalPlaces(4).toString())
+  })
   const [totalPaid, setTotalPaid] = useState(toInputValue(movement?.totalEur))
   // Al editar, el total guardado manda sobre el cálculo: si cambias cantidad, precio, cambio o comisiones sin tocar
   // el total, se recalcula en vez de dejar el antiguo (que haría que el cambio no se notara en el coste).
   const [totalTouched, setTotalTouched] = useState(false)
+  // Valores al abrir: si no cambian cantidad, precio, cambio ni la suma de comisiones e impuestos, el total guardado sigue valiendo.
+  const [initial] = useState(() => ({ quantity, price, fxRate: movement && movement.fxRate !== '1' ? toInputValue(movement.fxRate) : '', extras: sumInputs(fees, taxes) }))
   // Traspaso entre fondos: fondo de destino y participaciones que recibe.
   const [toAssetId, setToAssetId] = useState(movement?.toAssetId ?? '')
   const [toQuantity, setToQuantity] = useState(toInputValue(movement?.toQuantity))
@@ -131,7 +145,13 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const am = parseUserNumber(amount)
   const toQ = toQuantity.trim() === '' ? undefined : parseUserNumber(toQuantity)
   const feesRaw = fees.trim() === '' ? undefined : parseUserNumber(fees)
-  const totalRaw = totalPaid.trim() === '' ? undefined : parseUserNumber(totalPaid)
+  const taxesRaw = taxes.trim() === '' ? undefined : parseUserNumber(taxes)
+  // Editando: si cambia algo de lo que sale el total y no se ha tocado el total, se recalcula en vez de dejar el antiguo.
+  const extrasNow = sumInputs(fees, taxes)
+  const totalStale =
+    !!movement && trade && !totalTouched &&
+    (quantity !== initial.quantity || price !== initial.price || fxRate !== initial.fxRate || !(extrasNow && initial.extras && extrasNow.eq(initial.extras)))
+  const totalRaw = totalStale || totalPaid.trim() === '' ? undefined : parseUserNumber(totalPaid)
   const fe = feesRaw === undefined ? '0' : feesRaw
   const wh = withholding.trim() === '' ? '0' : parseUserNumber(withholding)
   const whO = whOrigin.trim() === '' ? undefined : parseUserNumber(whOrigin)
@@ -148,6 +168,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
         price: pr ? d(pr) : undefined,
         fxRate: fxRaw ? d(fxRaw) : ecbNow ? d(ecbNow.rate) : undefined,
         feesEur: feesRaw ? d(feesRaw) : undefined,
+        taxesEur: taxesRaw ? d(taxesRaw) : undefined,
         totalEur: totalRaw ? d(totalRaw) : undefined,
       })
     : null
@@ -189,6 +210,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
     price: trade && (pr === null || !t!.price || t!.price.lt(0)),
     amount: !trade && !transfer && (am === null || d(am).lte(0)),
     fees: feesRaw === null || (feesRaw !== undefined && d(feesRaw).lt(0)),
+    taxes: taxesRaw === null || (taxesRaw !== undefined && d(taxesRaw).lt(0)),
     total: trade && (totalRaw === null || (totalRaw !== undefined && d(totalRaw).lte(0)) || !!t!.inconsistent),
     withholding: wh === null || d(wh).lt(0),
     whOrigin: whO === null || (whO !== undefined && d(whO).lt(0)),
@@ -230,10 +252,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
     set(value)
     if (movement && !trade && !netTouched) setNetPaid('')
   }
-  function edit(set: (v: string) => void, value: string) {
-    set(value)
-    if (movement && trade && !totalTouched) setTotalPaid('')
-  }
+  const edit = (set: (v: string) => void, value: string) => set(value)
   /** Número calculado como texto para un campo vacío (coma decimal). */
   const calc = (v: Decimal | undefined, dp: number) => (v ? toInputValue(v.toDecimalPlaces(dp).toString()) : undefined)
 
@@ -270,6 +289,8 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
           currency,
           fxRate: fx!,
           fees: feesStored,
+          // Impuestos de la operación, también en la divisa del movimiento (como las comisiones).
+          taxes: trade && t!.taxesEur && !t!.taxesEur.isZero() ? t!.taxesEur.mul(d(fx!)).toDecimalPlaces(8).toString() : undefined,
           // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
           totalEur: trade && totalRaw ? totalRaw : undefined,
           // Con retenciones separadas, la total se guarda también (en la divisa del movimiento) para versiones anteriores.
@@ -350,6 +371,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
             <input type="radio" name="type" value={t} checked={type === t} onChange={() => {
                 if (isTrade(t) !== isTrade(type)) {
                   setFees('')
+                  setTaxes('')
                   setTotalPaid('')
                 }
                 setType(t)
@@ -471,7 +493,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
           <div className="grid-2">
             <Field
               label="Comisiones (€)"
-              hint={t?.derived.feesEur ? 'Calculadas con el total' : 'Cánones y gastos'}
+              hint={t?.derived.feesEur ? 'Calculadas con el total' : 'Lo que cobra el bróker'}
             >
               <input
                 inputMode="decimal"
@@ -481,22 +503,31 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
                 aria-invalid={bad('fees')}
               />
             </Field>
-            <Field
-              label={`${totalLabel} (€)`}
-              hint={t?.derived.totalEur ? (movement?.totalEur && !totalTouched ? 'Recalculado con tus cambios' : 'Calculado') : type === 'compra' ? 'Lo que te cobraron' : 'Lo que te ingresaron'}
-            >
+            <Field label="Impuestos (€)" hint="Tasa sobre transacciones financieras, timbre…">
               <input
                 inputMode="decimal"
-                value={totalPaid}
-                onChange={(e) => {
-                  setTotalTouched(true)
-                  setTotalPaid(e.target.value)
-                }}
-                placeholder={calc(t?.derived.totalEur ? t.totalEur : undefined, 2)}
-                aria-invalid={bad('total')}
+                value={taxes}
+                onChange={(e) => edit(setTaxes, e.target.value)}
+                placeholder="0"
+                aria-invalid={bad('taxes')}
               />
             </Field>
           </div>
+          <Field
+            label={`${totalLabel} (€)`}
+            hint={t?.derived.totalEur ? (movement?.totalEur && totalStale ? 'Recalculado con tus cambios' : 'Calculado') : type === 'compra' ? 'Lo que te cobraron' : 'Lo que te ingresaron'}
+          >
+            <input
+              inputMode="decimal"
+              value={totalStale ? '' : totalPaid}
+              onChange={(e) => {
+                setTotalTouched(true)
+                setTotalPaid(e.target.value)
+              }}
+              placeholder={calc(t?.derived.totalEur ? t.totalEur : undefined, 2)}
+              aria-invalid={bad('total')}
+            />
+          </Field>
         </>
       ) : (
         <>

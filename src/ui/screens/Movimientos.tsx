@@ -19,8 +19,9 @@ const dayFmt = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric
 function netAmount(m: Movement) {
   if (m.type === 'compra' && m.totalEur) return d(m.totalEur).neg()
   if (m.type === 'venta' && m.totalEur) return d(m.totalEur)
-  if (m.type === 'compra') return d(m.quantity).mul(d(m.price)).plus(d(m.fees)).neg()
-  if (m.type === 'venta') return d(m.quantity).mul(d(m.price)).minus(d(m.fees))
+  const extras = d(m.fees).plus(d(m.taxes ?? '0'))
+  if (m.type === 'compra') return d(m.quantity).mul(d(m.price)).plus(extras).neg()
+  if (m.type === 'venta') return d(m.quantity).mul(d(m.price)).minus(extras)
   return incomeBreakdown(m).netEur
 }
 

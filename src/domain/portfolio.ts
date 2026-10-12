@@ -96,13 +96,13 @@ export function toEur(amount: Decimal, fxRate: string | undefined): Decimal {
 /** Coste de adquisición en EUR de una compra: lo realmente cobrado, o cantidad × precio + comisiones ÷ cambio. */
 export function buyCostEur(m: Movement): Decimal {
   if (m.totalEur) return d(m.totalEur)
-  return toEur(d(m.quantity).mul(d(m.price)).plus(d(m.fees)), m.fxRate)
+  return toEur(d(m.quantity).mul(d(m.price)).plus(d(m.fees)).plus(d(m.taxes ?? '0')), m.fxRate)
 }
 
 /** Valor de transmisión en EUR de una venta: lo realmente ingresado, o cantidad × precio − comisiones ÷ cambio. */
 export function sellProceedsEur(m: Movement): Decimal {
   if (m.totalEur) return d(m.totalEur)
-  return toEur(d(m.quantity).mul(d(m.price)).minus(d(m.fees)), m.fxRate)
+  return toEur(d(m.quantity).mul(d(m.price)).minus(d(m.fees)).minus(d(m.taxes ?? '0')), m.fxRate)
 }
 
 export function sortMovements(movements: Movement[]): Movement[] {
@@ -130,7 +130,7 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
     }
     const lots = lotsByAsset.get(asset.id) ?? []
     lotsByAsset.set(asset.id, lots)
-    const fees = d(m.fees)
+    const fees = d(m.fees).plus(d(m.taxes ?? '0')) // comisiones e impuestos de la operación
 
     if (m.type === 'compra') {
       const qty = d(m.quantity)

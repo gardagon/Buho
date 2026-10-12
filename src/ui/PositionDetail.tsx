@@ -221,6 +221,7 @@ export function PositionDetail({ lossWindows, position, portfolio, movements, on
                   <p className="small muted num">
                     Precio medio con comisiones {formatMoney(l.unitCostEur)}
                     {!l.inherited && l.buy.fees !== '0' && ` · comisiones ${formatMoney(l.buy.fees, l.buy.currency)}`}
+                    {!l.inherited && l.buy.taxes && l.buy.taxes !== '0' && ` · impuestos ${formatMoney(l.buy.taxes, l.buy.currency)}`}
                     {l.buy.account && ` · ${l.buy.account}`}
                   </p>
                   {l.slices.map((s) => (

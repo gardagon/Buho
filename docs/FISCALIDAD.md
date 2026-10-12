@@ -9,9 +9,10 @@ En cada venta se consideran vendidos primero los títulos comprados antes (art. 
 
 > Buho agrupa por activo (no por cuenta), así que esto se cumple siempre que el mismo valor se registre como un único activo.
 
-### Comisiones y gastos
-- Compra: se suman al valor de adquisición.
-- Venta: se restan del valor de transmisión.
+### Comisiones, gastos e impuestos
+- Compra: se suman al valor de adquisición (art. 35.1.b LIRPF: gastos y tributos inherentes a la adquisición).
+- Venta: se restan del valor de transmisión (art. 35.1.b).
+- Los **impuestos de la operación** (p. ej. la tasa sobre transacciones financieras en valores españoles, el timbre británico…) se apuntan aparte, en `Movement.taxes`, y pesan igual que las comisiones en el coste y el valor de transmisión. Separarlos no cambia ningún cálculo: es para reflejar lo que dice el bróker. Los movimientos anteriores lo llevan todo como comisiones hasta que se reparta a mano.
 
 ### Importe real en EUR (`Movement.totalEur`)
 Si se conoce lo que el bróker cobró (compra) o ingresó (venta) en EUR, ese importe manda: es el valor de adquisición o de transmisión, con comisiones y cambio del bróker ya incluidos. Si no se conoce, se calcula como cantidad × precio ± comisiones ÷ tipo de cambio. El formulario deduce la incógnita que falte (comisiones, precio o cambio efectivo) con `src/domain/trade.ts`.
