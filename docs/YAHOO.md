@@ -45,3 +45,7 @@ Si Buho añade funciones al proxy, «Probar» avisa de que tu versión es antigu
 Yahoo cubre los ETF europeos, pero cada bolsa donde cotiza tiene su propio símbolo con un sufijo: por ejemplo, el iShares Core S&P 500 UCITS ETF USD (Acc) es `SXR8.DE` en Xetra (en euros), `CSPX.L` en Londres (en dólares) y `CSSPX.MI` en Milán. Ni el ISIN ni la etiqueta del bróker (la de Trade Republic, la de ING…) sirven como ticker.
 
 En el formulario del activo, con el ISIN escrito, el botón **Buscar el ticker con el ISIN** pide a Yahoo (o a Finnhub) las bolsas donde cotiza y deja elegir una con su precio y su divisa. Para que el precio coincida con el de tu bróker, elige la bolsa en euros. Yahoo devuelve una sola cotización por ISIN (la principal), así que Buho busca después por el nombre del valor y añade las demás bolsas con el mismo nombre (la clase de distribución, que es otro fondo, no se mezcla). En «Seguir un valor» también se puede buscar por ISIN.
+
+## Materias primas y metales
+
+Yahoo no tiene un símbolo «XAU» a secas. Para el oro: `XAUUSD=X` (oro al contado, en dólares por onza) o `GC=F` (futuro de oro, también en dólares; el precio es casi idéntico). Plata: `XAGUSD=X` o `SI=F`. También hay ETC que cotizan como una acción, como `SGLN.L` (Londres) o `4GLD.DE` (Xetra). Buho reconoce esos símbolos como materia prima.

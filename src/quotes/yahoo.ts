@@ -37,7 +37,9 @@ export function normalizeCurrency(currency: string): { currency: string; divisor
   return { currency: currency.toUpperCase(), divisor: 1 }
 }
 
-export function mapYahooType(type: string | null | undefined): AssetType {
+export function mapYahooType(type: string | null | undefined, symbol?: string): AssetType {
+  // Metales al contado (XAUUSD=X, XAGUSD=X…) y futuros de materias primas (GC=F, SI=F): Yahoo no siempre los marca como tales.
+  if (symbol && (/^(XAU|XAG|XPT|XPD)[A-Z]{3}=X$/i.test(symbol) || /=F$/i.test(symbol))) return 'materia_prima'
   switch ((type ?? '').toUpperCase()) {
     case 'ETF':
       return 'etf'
@@ -160,7 +162,7 @@ export function createYahooProvider(proxyUrl: string, fetcher: Fetcher = timedFe
         hits.push({
           symbol: r.symbol,
           name: r.name || r.symbol,
-          type: mapYahooType(r.type),
+          type: mapYahooType(r.type, r.symbol),
           // La divisa real llega con la cotización; hasta entonces, la habitual de esa bolsa.
           currency: guessCurrency(r.symbol),
           exchange: r.exchange ?? undefined,

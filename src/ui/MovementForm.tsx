@@ -80,6 +80,8 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   // Al editar, el total guardado manda sobre el cálculo: si cambias cantidad, precio, cambio o comisiones sin tocar
   // el total, se recalcula en vez de dejar el antiguo (que haría que el cambio no se notara en el coste).
   const [totalTouched, setTotalTouched] = useState(false)
+  // Operación en divisa: comisiones, impuestos y total pueden apuntarse en esa divisa (Revolut cobra todo en dólares) o en euros.
+  const [amountsInCurrency, setAmountsInCurrency] = useState(false)
   // Valores al abrir: si no cambian cantidad, precio, cambio ni la suma de comisiones e impuestos, el total guardado sigue valiendo.
   const [initial] = useState(() => ({ quantity, price, fxRate: movement && movement.fxRate !== '1' ? toInputValue(movement.fxRate) : '', extras: sumInputs(fees, taxes) }))
   // Traspaso entre fondos: fondo de destino y participaciones que recibe.
@@ -160,26 +162,36 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const fxRaw = fxRate.trim() === '' ? undefined : parseUserNumber(fxRate)
 
   // Compras y ventas: lo que falta se calcula con lo que sí se ha puesto.
+  // Con los importes en la divisa de la operación se pasan a euros con el cambio (el escrito o el del BCE de ese día).
+  // Para Hacienda cuenta lo que vale en euros ese día; las comisiones se guardan tal cual, en la divisa.
+  const amountsInPriceCur = trade && needsFx && amountsInCurrency
+  const amountFx = fxRaw ? d(fxRaw) : ecbNow ? d(ecbNow.rate) : undefined
+  const toEurAmount = (v: string | null | undefined) => {
+    if (!v) return undefined
+    return amountsInPriceCur ? (amountFx ? d(v).div(amountFx) : undefined) : d(v)
+  }
   const tradeInput = {
     type: type as 'compra' | 'venta',
     currency,
     quantity: q ? d(q) : undefined,
     price: pr ? d(pr) : undefined,
-    feesEur: feesRaw ? d(feesRaw) : undefined,
-    taxesEur: taxesRaw ? d(taxesRaw) : undefined,
-    totalEur: totalRaw ? d(totalRaw) : undefined,
+    feesEur: toEurAmount(feesRaw),
+    taxesEur: toEurAmount(taxesRaw),
+    totalEur: toEurAmount(totalRaw),
   }
-  // Operación en divisa con el total y las comisiones puestos: el cambio efectivo es el que cuadra con lo que cobró el
-  // bróker (el del BCE rara vez coincide, y escribirlo a mano con pocos decimales descuadra unos céntimos).
+  // Un importe de euros mostrado en la divisa elegida (para placeholders y avisos).
+  const shown = (v: Decimal | undefined) => (v && amountsInPriceCur && amountFx ? v.mul(amountFx) : v)
+  const amountCurrency = amountsInPriceCur ? currency : 'EUR'
+  const amountSymbol = amountCurrency === 'EUR' ? '€' : amountCurrency
   const impliedTrade =
-    trade && needsFx && totalRaw && (feesRaw !== undefined || taxesRaw !== undefined)
+    trade && needsFx && !amountsInPriceCur && totalRaw && (feesRaw !== undefined || taxesRaw !== undefined)
       ? completeTrade({ ...tradeInput, fxRate: undefined })
       : null
   const impliedTradeFx = impliedTrade?.derived.fxRate ? impliedTrade.fxRate : undefined
   const t = trade
     ? completeTrade({
         ...tradeInput,
-        fxRate: fxRaw ? d(fxRaw) : (impliedTradeFx ?? (ecbNow ? d(ecbNow.rate) : undefined)),
+        fxRate: amountsInPriceCur ? amountFx : fxRaw ? d(fxRaw) : (impliedTradeFx ?? (ecbNow ? d(ecbNow.rate) : undefined)),
       })
     : null
   // ¿El precio cuadra con lo que cotizó ese día? (con el histórico descargado)
@@ -302,7 +314,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
           // Impuestos de la operación, también en la divisa del movimiento (como las comisiones).
           taxes: trade && t!.taxesEur && !t!.taxesEur.isZero() ? t!.taxesEur.mul(d(fx!)).toDecimalPlaces(8).toString() : undefined,
           // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
-          totalEur: trade && totalRaw ? totalRaw : undefined,
+          totalEur: trade && totalRaw ? (amountsInPriceCur ? d(totalRaw).div(d(fx!)).toDecimalPlaces(2).toString() : totalRaw) : undefined,
           // Con retenciones separadas, la total se guarda también (en la divisa del movimiento) para versiones anteriores.
           withholding: trade ? '0' : split ? income!.withholdingEur.mul(d(fx!)).toDecimalPlaces(8).toString() : wh!,
           ...(!trade && split
@@ -502,20 +514,28 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
               </Field>
             )}
           </div>
+          {needsFx && (
+            <Field label="Comisiones y total en" hint="La moneda en la que te lo cobra o ingresa el bróker">
+              <select value={amountsInCurrency ? 'currency' : 'EUR'} onChange={(e) => setAmountsInCurrency(e.target.value === 'currency')}>
+                <option value="EUR">Euros (€)</option>
+                <option value="currency">{currency === 'USD' ? 'Dólares ($)' : currency}</option>
+              </select>
+            </Field>
+          )}
           <div className="grid-2">
             <Field
-              label="Comisiones (€)"
+              label={`Comisiones (${amountSymbol})`}
               hint={t?.derived.feesEur ? 'Calculadas con el total' : 'Lo que cobra el bróker'}
             >
               <input
                 inputMode="decimal"
                 value={fees}
                 onChange={(e) => edit(setFees, e.target.value)}
-                placeholder={calc(t?.derived.feesEur ? t.feesEur : undefined, 2) ?? '0'}
+                placeholder={calc(t?.derived.feesEur ? shown(t.feesEur) : undefined, 2) ?? '0'}
                 aria-invalid={bad('fees')}
               />
             </Field>
-            <Field label="Impuestos (€)" hint="Tasa sobre transacciones financieras, timbre…">
+            <Field label={`Impuestos (${amountSymbol})`} hint="Tasa sobre transacciones financieras, timbre…">
               <input
                 inputMode="decimal"
                 value={taxes}
@@ -526,7 +546,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
             </Field>
           </div>
           <Field
-            label={`${totalLabel} (€)`}
+            label={`${totalLabel} (${amountSymbol})`}
             hint={t?.derived.totalEur ? (movement?.totalEur && totalStale ? 'Recalculado con tus cambios' : 'Calculado') : type === 'compra' ? 'Lo que te cobraron' : 'Lo que te ingresaron'}
           >
             <input
@@ -536,7 +556,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
                 setTotalTouched(true)
                 setTotalPaid(e.target.value)
               }}
-              placeholder={calc(t?.derived.totalEur ? t.totalEur : undefined, 2)}
+              placeholder={calc(t?.derived.totalEur ? shown(t.totalEur) : undefined, 2)}
               aria-invalid={bad('total')}
             />
           </Field>
@@ -677,7 +697,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
       )}
       {trade && t?.mismatchEur && !t.inconsistent && (
         <p className="small muted">
-          Los datos no cuadran por {formatMoney(t.mismatchEur.abs(), 'EUR')}. Se guardará el total que has puesto, que es el importe real.
+          Los datos no cuadran por {formatMoney(shown(t.mismatchEur)!.abs(), amountCurrency)}. Se guardará el total que has puesto, que es el importe real.
           {impliedTradeFx && fxRaw && (
             <>
               {' '}

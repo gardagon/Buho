@@ -72,6 +72,10 @@ describe('proxy de Yahoo', () => {
     ])
     expect(mapYahooType('MUTUALFUND')).toBe('fondo')
     expect(mapYahooType(undefined)).toBe('otro')
+    // Oro al contado y futuros de materias primas: el tipo de Yahoo («CURRENCY») no lo dice, el símbolo sí.
+    expect(mapYahooType('CURRENCY', 'XAUUSD=X')).toBe('materia_prima')
+    expect(mapYahooType('FUTURE', 'GC=F')).toBe('materia_prima')
+    expect(mapYahooType('CURRENCY', 'EURUSD=X')).toBe('otro')
   })
 
   it('valida la dirección del proxy', () => {
