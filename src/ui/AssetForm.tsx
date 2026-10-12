@@ -24,6 +24,9 @@ export const CURRENCIES: Record<string, string> = {
 }
 const OTHER = '__otra'
 
+/** Nombre sin mayúsculas ni signos, para reconocer el mismo fondo cotizando en otra bolsa. */
+const nameKey = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
 interface Props {
   asset?: Asset
   movementCount?: number
@@ -66,7 +69,19 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
     setFinding(true)
     setFindError('')
     try {
-      const results = await searchSecurities(isin.trim().toUpperCase())
+      // Yahoo devuelve una sola cotización por ISIN (la principal). Las demás bolsas del mismo valor salen buscando su nombre.
+      const byIsin = await searchSecurities(isin.trim().toUpperCase())
+      let results = byIsin
+      if (byIsin.length > 0) {
+        try {
+          const key = nameKey(byIsin[0].hit.name)
+          const byName = await searchSecurities(byIsin[0].hit.name)
+          const seen = new Set(byIsin.map((r) => r.hit.symbol))
+          results = [...byIsin, ...byName.filter((r) => !seen.has(r.hit.symbol) && nameKey(r.hit.name) === key)]
+        } catch {
+          /* con una sola bolsa basta para seguir */
+        }
+      }
       setFound(results)
       if (results.length === 0) setFindError('No se ha encontrado ese ISIN. Prueba con el nombre del valor o escribe el ticker a mano.')
     } catch (e) {
@@ -83,7 +98,7 @@ export function AssetForm({ asset, movementCount = 0, defaultWatched = false, on
     setCurrency(c)
     setOtherCurrency(!(c in CURRENCIES))
     setType(r.hit.type)
-    if (!name.trim()) setName(r.hit.name)
+    if (!name.trim()) setName(found?.[0]?.hit.name ?? r.hit.name)
     if (!market.trim() && r.hit.exchange) setMarket(r.hit.exchange)
     setFound(null)
   }
