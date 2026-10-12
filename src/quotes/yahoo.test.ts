@@ -209,6 +209,44 @@ describe('Finnhub con Yahoo de respaldo', () => {
     expect((await db.quotes.get(apple))?.provider).toBe('yahoo')
   })
 
+  it('un metal con símbolo de Yahoo (XAUUSD=X) se pide a Yahoo y su aviso es el de Yahoo, no el de Finnhub', async () => {
+    const oro = await saveAsset({ name: 'ORO', type: 'materia_prima', currency: 'USD', ticker: 'XAUUSD=X', watched: true })
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    await setMeta(QUOTE_META.yahooProxy, PROXY)
+    const calls = { finnhub: [] as string[], yahoo: [] as string[] }
+    const f = async (url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u.includes('finnhub.io/api/v1/quote')) {
+        calls.finnhub.push(new URL(u).searchParams.get('symbol') ?? '')
+        return json({ c: 0, t: 0 }) // Finnhub no conoce el símbolo
+      }
+      if (u.startsWith(PROXY + '/quote')) {
+        calls.yahoo.push(new URL(u).searchParams.get('symbols') ?? '')
+        return json({ quotes: { 'XAUUSD=X': { price: 2650.5, previousClose: 2640, currency: 'USD', time: 1_790_000_000 } } })
+      }
+      return fetcher(url)
+    }
+    const report = await refreshQuotes(f)
+    expect(report.failed).toEqual([])
+    expect((await db.quotes.get(oro))?.provider).toBe('yahoo')
+    // Un símbolo con «=» o «^» no es de EE. UU.: va directo a Yahoo, sin probar Finnhub.
+    expect(calls.finnhub).toEqual([])
+  })
+
+  it('si Yahoo tampoco tiene el símbolo, el aviso es el de Yahoo (el último que se intentó)', async () => {
+    await saveAsset({ name: 'ORO', type: 'materia_prima', currency: 'USD', ticker: 'XAUUSD=X', watched: true })
+    await setMeta(QUOTE_META.finnhubKey, 'K')
+    await setMeta(QUOTE_META.yahooProxy, PROXY)
+    const f = async (url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u.includes('finnhub.io/api/v1/quote')) return json({ c: 0, t: 0 })
+      if (u.startsWith(PROXY + '/quote')) return json({ quotes: {}, errors: { 'XAUUSD=X': 'Sin datos' } })
+      return fetcher(url)
+    }
+    const report = await refreshQuotes(f)
+    expect(report.failed.map((x) => x.message)).toEqual([expect.stringMatching(/Yahoo/)])
+  })
+
   it('sin Finnhub, Yahoo cotiza todo', async () => {
     await saveAsset({ name: 'Santander', type: 'accion', currency: 'EUR', ticker: 'SAN.MC', watched: true })
     await setMeta(QUOTE_META.yahooProxy, PROXY)

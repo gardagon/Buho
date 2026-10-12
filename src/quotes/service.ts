@@ -85,12 +85,13 @@ export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean
     const c = candidates(a)
     const remembered = sources[a.id]
     if (remembered && c.some((p) => p.id === remembered)) return remembered
-    if (c.some((p) => p.id === 'finnhub') && !a.ticker?.includes('.')) return 'finnhub'
+    if (c.some((p) => p.id === 'finnhub') && /^[A-Za-z]{1,5}$/.test(a.ticker ?? '')) return 'finnhub'
     return (c.find((p) => p.id === 'yahoo') ?? c[0])?.id
   }
 
   const got = new Map<string, string>() // activo → proveedor que le dio precio
   const lastError = new Map<string, string>()
+  const yahooError = new Map<string, string>()
   const offlineWith = new Set<string>()
   /** Pide a cada proveedor, a la vez, los activos que le tocan, y guarda lo que llega. */
   async function wave(plan: Map<string, Asset[]>) {
@@ -107,6 +108,7 @@ export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean
         await saveTodayPrices(mine)
         for (const [aid, message] of result.errors) {
           lastError.set(aid, message)
+          if (id === 'yahoo') yahooError.set(aid, message)
           if (/Sin conexión/.test(message)) offlineWith.add(`${aid}:${id}`)
         }
       }),
@@ -153,7 +155,8 @@ export async function refreshQuotes(fetcher?: Fetcher, opts: { history?: boolean
 
   for (const a of tracked) {
     if (got.has(a.id)) continue
-    const message = lastError.get(a.id)
+    // El aviso de Yahoo gana: cubre casi todo, y el de Finnhub (plan gratuito) suele ser solo «no es de EE. UU.».
+    const message = yahooError.get(a.id) ?? lastError.get(a.id)
     if (message) report.failed.push({ assetName: a.name, message })
   }
 
