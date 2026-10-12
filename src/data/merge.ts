@@ -48,3 +48,31 @@ export function parseSnapshot(text: string): Snapshot {
   }
   return s as Snapshot
 }
+
+/** Cuántos registros de cada lado están más avanzados que en el otro (o no existen allí). */
+export interface SnapshotDiff {
+  /** Registros que este dispositivo tiene nuevos o más recientes que la copia. */
+  localAhead: number
+  /** Registros que la copia tiene nuevos o más recientes que este dispositivo. */
+  remoteAhead: number
+}
+
+export function diffSnapshots(local: Snapshot, remote: Snapshot): SnapshotDiff {
+  let localAhead = 0
+  let remoteAhead = 0
+  const compare = (a: SyncedRecord[], b: SyncedRecord[]) => {
+    const byId = new Map(b.map((r) => [r.id, r.updatedAt]))
+    const seen = new Set<string>()
+    for (const r of a) {
+      seen.add(r.id)
+      const other = byId.get(r.id)
+      if (other === undefined || r.updatedAt > other) localAhead++
+      else if (other > r.updatedAt) remoteAhead++
+    }
+    for (const id of byId.keys()) if (!seen.has(id)) remoteAhead++
+  }
+  compare(local.assets, remote.assets)
+  compare(local.movements, remote.movements)
+  compare(local.prices ?? [], remote.prices ?? [])
+  return { localAhead, remoteAhead }
+}

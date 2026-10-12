@@ -5,10 +5,11 @@ import { useQuotes } from '../../quotes/QuotesContext'
 import { normalizeProxyUrl, testYahooProxy } from '../../quotes/yahoo'
 import { parseSnapshot } from '../../data/merge'
 import { exportSnapshot, mergeIntoLocal, wipeLocalData } from '../../data/repo'
-import { META } from '../../sync/sync'
+import { checkDrive, META, type DriveCheck } from '../../sync/sync'
 import { useSync } from '../../sync/SyncContext'
 import { Guide, type GuideId } from '../Guides'
 import { NetDebug } from '../prices'
+import { downloadFile } from '../download'
 import { useToast } from '../Toast'
 
 const timeFmt = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
@@ -151,6 +152,7 @@ export function Ajustes() {
             </button>
           )}
         </div>
+        {connected && <DriveCheckPanel />}
         {!s.hasClientId && (
           <p>Para conectar Drive hace falta el ID de cliente de Google de esta instalación. Mira el README del proyecto.</p>
         )}
@@ -366,5 +368,72 @@ export function Ajustes() {
         Buho {__APP_VERSION__} · compilada {__BUILD_ID__}. Sin servidores: tus datos solo están en tus dispositivos y en tu Google Drive.
       </p>
     </>
+  )
+}
+
+/** Comprueba la copia de Drive sin cambiar nada: qué hay, cuándo se guardó y si coincide con este dispositivo. */
+function DriveCheckPanel() {
+  const [check, setCheck] = useState<DriveCheck | null | undefined>()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function run() {
+    setBusy(true)
+    setError('')
+    try {
+      setCheck(await checkDrive())
+    } catch (e) {
+      setCheck(undefined)
+      setError(e instanceof Error ? e.message : 'No se pudo comprobar la copia. Comprueba la conexión.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+  const counts = (c: { assets: number; movements: number }) => `${plural(c.assets, 'activo', 'activos')} y ${plural(c.movements, 'movimiento', 'movimientos')}`
+
+  return (
+    <div className="stack">
+      <div className="actions">
+        <button className="btn small" onClick={() => void run()} disabled={busy}>
+          {busy ? 'Comprobando…' : 'Comprobar la copia de Drive'}
+        </button>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      {check === null && <p className="small">Todavía no hay copia en tu Drive. Pulsa «Sincronizar ahora» para crearla.</p>}
+      {check && (
+        <div className="small stack">
+          <p style={{ margin: 0 }}>
+            <strong>En Drive:</strong> guardada el {timeFmt.format(new Date(check.modifiedAt))}, {counts(check.drive)}
+            {check.sizeBytes !== undefined && `, ${Math.max(1, Math.round(check.sizeBytes / 1024))} KB`}.
+          </p>
+          <p style={{ margin: 0 }}>
+            <strong>En este dispositivo:</strong> {counts(check.device)}.
+          </p>
+          {check.localAhead === 0 && check.remoteAhead === 0 ? (
+            <p style={{ margin: 0 }} className="gain">
+              ✓ La copia de Drive y este dispositivo coinciden.
+            </p>
+          ) : (
+            <p style={{ margin: 0 }} className="loss">
+              {check.localAhead > 0 && `Este dispositivo tiene ${plural(check.localAhead, 'cambio', 'cambios')} que aún no ${check.localAhead === 1 ? 'está' : 'están'} en Drive. `}
+              {check.remoteAhead > 0 && `Drive tiene ${plural(check.remoteAhead, 'cambio', 'cambios')} que no ${check.remoteAhead === 1 ? 'está' : 'están'} en este dispositivo. `}
+              Pulsa «Sincronizar ahora» para igualar los dos.
+            </p>
+          )}
+          <div className="actions">
+            {check.link && (
+              <a className="btn small" href={check.link} target="_blank" rel="noopener noreferrer">
+                Abrir en Drive
+              </a>
+            )}
+            <button className="btn small" onClick={() => downloadFile('buho-cartera-drive.json', check.text, 'application/json')}>
+              Descargar la copia
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

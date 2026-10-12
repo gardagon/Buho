@@ -1,5 +1,5 @@
 import { getMeta, setMeta } from '../data/db'
-import { parseSnapshot } from '../data/merge'
+import { diffSnapshots, parseSnapshot, type SnapshotDiff } from '../data/merge'
 import { exportSnapshot, mergeIntoLocal } from '../data/repo'
 import * as g from './google'
 
@@ -83,3 +83,50 @@ export async function syncNow(): Promise<{ at: string; created: boolean }> {
 }
 
 export { hasValidToken } from './google'
+
+export interface DriveCheck extends SnapshotDiff {
+  fileId: string
+  /** Cuándo se guardó la copia por última vez en Drive. */
+  modifiedAt: string
+  sizeBytes?: number
+  /** Enlace para abrir el archivo en Drive. */
+  link?: string
+  drive: { assets: number; movements: number }
+  device: { assets: number; movements: number }
+  /** Texto de la copia, para descargarla. */
+  text: string
+}
+
+const live = (rs: { deleted?: boolean }[]) => rs.filter((r) => !r.deleted).length
+
+/**
+ * Mira la copia que hay en Drive sin cambiar nada: cuándo se guardó, cuánto pesa, cuántos activos y movimientos
+ * tiene y si coincide con este dispositivo.
+ */
+export async function checkDrive(): Promise<DriveCheck | null> {
+  if (!g.hasValidToken()) await connect()
+  let fileId = await getMeta<string>(META.fileId)
+  if (fileId) {
+    try {
+      await g.fileInfo(fileId)
+    } catch (e) {
+      if (!g.isNotFound(e)) throw e
+      fileId = undefined
+    }
+  }
+  if (!fileId) fileId = (await g.findFile())?.id
+  if (!fileId) return null
+  const [info, text] = await Promise.all([g.fileInfo(fileId), g.downloadFile(fileId)])
+  const remote = parseSnapshot(text)
+  const local = await exportSnapshot()
+  return {
+    fileId,
+    modifiedAt: info.modifiedTime,
+    sizeBytes: info.size ? Number(info.size) : undefined,
+    link: info.webViewLink,
+    drive: { assets: live(remote.assets), movements: live(remote.movements) },
+    device: { assets: live(local.assets), movements: live(local.movements) },
+    text,
+    ...diffSnapshots(local, remote),
+  }
+}

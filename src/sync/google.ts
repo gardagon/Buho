@@ -176,3 +176,16 @@ export async function updateFile(id: string, content: string): Promise<void> {
 }
 
 export const isNotFound = (e: unknown) => e instanceof DriveError && e.status === 404
+
+export interface DriveFileInfo {
+  id: string
+  modifiedTime: string
+  size?: string
+  webViewLink?: string
+}
+
+/** Datos del archivo de la cartera: cuándo se guardó, cuánto pesa y el enlace para abrirlo en Drive. */
+export async function fileInfo(id: string): Promise<DriveFileInfo> {
+  const res = await driveFetch(`${API}/files/${id}?fields=id,modifiedTime,size,webViewLink`)
+  return res.json()
+}

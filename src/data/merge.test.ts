@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeRecords, parseSnapshot } from './merge'
+import { diffSnapshots, mergeRecords, parseSnapshot } from './merge'
 
 const r = (id: string, updatedAt: string, extra: object = {}) => ({ id, createdAt: updatedAt, updatedAt, ...extra })
 
@@ -36,5 +36,21 @@ describe('parseSnapshot', () => {
   it('acepta una copia válida', () => {
     const s = parseSnapshot(JSON.stringify({ app: 'buho', version: 1, exportedAt: '', assets: [], movements: [] }))
     expect(s.assets).toEqual([])
+  })
+
+  describe('diffSnapshots', () => {
+    const snap = (assets: object[], movements: object[]) =>
+      ({ app: 'buho', version: 1, exportedAt: '', assets, movements, prices: [] }) as never
+
+    it('copias iguales: nada adelantado en ningún lado', () => {
+      const a = snap([r('a1', '2026-01-01')], [r('m1', '2026-01-02')])
+      expect(diffSnapshots(a, a)).toEqual({ localAhead: 0, remoteAhead: 0 })
+    })
+
+    it('cuenta lo que cada lado tiene nuevo o más reciente', () => {
+      const local = snap([r('a1', '2026-01-01')], [r('m1', '2026-03-01'), r('m2', '2026-01-05')]) // m1 más nuevo, m2 solo aquí
+      const remote = snap([r('a1', '2026-01-01'), r('a2', '2026-01-09')], [r('m1', '2026-02-01')]) // a2 solo en Drive
+      expect(diffSnapshots(local, remote)).toEqual({ localAhead: 2, remoteAhead: 1 })
+    })
   })
 })
