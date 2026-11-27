@@ -213,8 +213,14 @@ export function PositionDetail({ lossWindows, position, portfolio, movements, on
                       </>
                     ) : (
                       <>
-                        {formatQuantity(l.quantity)} × {formatMoney(l.buy.price ?? '0', l.buy.currency)} ={' '}
+                        {formatQuantity(l.buy.quantity ?? '0')} × {formatMoney(l.buy.price ?? '0', l.buy.currency)} ={' '}
                         <strong>{formatMoney(l.costEur)}</strong>
+                        {l.liberated && (
+                          <span className="muted">
+                            {' '}
+                            + {formatQuantity(l.liberated.toDecimalPlaces(4))} {l.liberated.eq(1) ? 'acción liberada' : 'acciones liberadas'} (dividendo flexible, sin coste)
+                          </span>
+                        )}
                       </>
                     )}
                   </p>

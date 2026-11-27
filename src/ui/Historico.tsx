@@ -86,6 +86,8 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
   const hasSales = report.assets.some((a) => a.sales.length > 0)
   const hasDividends = !report.dividends.grossEur.isZero()
   const hasCoupons = !report.coupons.grossEur.isZero()
+  const rightsSales = report.assets.flatMap((a) => a.sales.filter((s) => s.rights))
+  const rightsProfit = rightsSales.reduce((sum, s) => sum.plus(s.profitEur), report.netEur.mul(0))
 
   return (
     <div className="year-panel">
@@ -105,8 +107,15 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
               ['Coste de adquisición', formatMoney(report.costEur)],
               ...(report.deferredLossEur.isZero() ? [] : ([['Pérdida diferida (dos meses)', formatMoney(report.deferredLossEur), 'loss']] as [string, string, string][])),
               ...(report.releasedLossEur.isZero() ? [] : ([['Pérdida recuperada', formatMoney(report.releasedLossEur), 'loss']] as [string, string, string][])),
+              ...(rightsSales.length === 0 ? [] : ([['De ellas, venta de derechos', formatMoney(rightsProfit), 'gain']] as [string, string, string][])),
+              ...(report.salesWithholdingEur.isZero() ? [] : ([['Retención de los derechos', formatMoney(report.salesWithholdingEur)]] as [string, string][])),
             ]}
           />
+          {rightsSales.length > 0 && (
+            <p className="small muted" style={{ margin: 0 }}>
+              Los derechos de dividendos flexibles vendidos en el mercado son una ganancia patrimonial con coste 0, no un dividendo: por eso están aquí.
+            </p>
+          )}
           {(!report.deferredLossEur.isZero() || !report.releasedLossEur.isZero()) && (
             <p className="small muted" style={{ margin: 0 }}>
               {!report.deferredLossEur.isZero() &&
@@ -118,7 +127,17 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
         </section>
       )}
 
-      {hasDividends && <IncomeBlock title="Dividendos" t={report.dividends} />}
+      {hasDividends && (
+        <IncomeBlock
+          title="Dividendos"
+          t={report.dividends}
+          note={
+            report.assets.some((a) => a.incomes.some((i) => i.scrip))
+              ? 'Incluye los derechos de dividendos flexibles vendidos a la empresa: tributan como dividendo.'
+              : undefined
+          }
+        />
+      )}
       {hasCoupons && <IncomeBlock title="Cupones" t={report.coupons} />}
 
       {tax && <TaxBlock tax={tax} />}
@@ -157,7 +176,7 @@ function YearPanel({ report, tax }: { report: YearReport; tax?: TaxEstimate }) {
 }
 
 /** Neto cobrado como cifra principal; debajo, bruto y retención. */
-function IncomeBlock({ title, t }: { title: string; t: { grossEur: Decimal; withholdingEur: Decimal; netEur: Decimal } }) {
+function IncomeBlock({ title, t, note }: { title: string; t: { grossEur: Decimal; withholdingEur: Decimal; netEur: Decimal }; note?: string }) {
   return (
     <section className="block dividendo">
       <h3 className="list-title">{title}</h3>
@@ -173,6 +192,11 @@ function IncomeBlock({ title, t }: { title: string; t: { grossEur: Decimal; with
           ['Retención', formatMoney(t.withholdingEur)],
         ]}
       />
+      {note && (
+        <p className="small muted" style={{ margin: 0 }}>
+          {note}
+        </p>
+      )}
     </section>
   )
 }
@@ -325,7 +349,7 @@ function TaxBlock({ tax }: { tax: TaxEstimate }) {
       </details>
       <p className="small muted" style={{ margin: 0 }}>
         Aproximación para territorio común (no País Vasco ni Navarra). Los dividendos tributan por el bruto; la retención en origen
-        se deduce como doble imposición y la de España se resta de la cuota. No incluye derechos de suscripción, y solo cuenta lo que hay en Buho. Contrástalo con el borrador de la Agencia Tributaria.
+        se deduce como doble imposición y la de España se resta de la cuota. Incluye la venta de derechos de dividendos flexibles (no su compra) y solo cuenta lo que hay en Buho. Contrástalo con el borrador de la Agencia Tributaria.
       </p>
     </section>
   )
@@ -352,9 +376,10 @@ function AssetDetail({ a }: { a: AssetYear }) {
             <article key={i.movementId} className="sale-card income-card">
               <header className="sale-head">
                 <strong>
-                  {i.type === 'cupon' ? 'Cupón' : 'Dividendo'} del {day(i.date)}
+                  {i.type === 'cupon' ? 'Cupón' : i.scrip ? 'Dividendo flexible' : 'Dividendo'} del {day(i.date)}
                 </strong>
               </header>
+              {i.scrip && <p className="small muted" style={{ margin: 0 }}>Derechos vendidos a la empresa: tributan como dividendo.</p>}
               <Lines
                 rows={[
                   ['Bruto', formatMoney(i.grossEur)],
@@ -394,13 +419,18 @@ export function SaleCard({ sale: s }: { sale: SaleDetail }) {
   return (
     <article className="sale-card">
       <header className="sale-head">
-        <strong>Venta del {day(s.date)}</strong>
+        <strong>{s.rights ? 'Venta de derechos del ' : 'Venta del '}{day(s.date)}</strong>
         {s.account && <span className="small muted">{s.account}</span>}
       </header>
+      {s.rights && (
+        <p className="small muted" style={{ margin: 0 }}>
+          Dividendo flexible: derechos vendidos en el mercado. Desde 2017 todo lo cobrado es ganancia patrimonial (coste 0), no dividendo.
+        </p>
+      )}
       <Lines
         rows={[
-          ['Cantidad', formatQuantity(s.quantity)],
-          ['Precio', formatMoney(s.price, s.currency)],
+          [s.rights ? 'Derechos' : 'Cantidad', formatQuantity(s.quantity)],
+          [s.rights ? 'Precio por derecho' : 'Precio', formatMoney(s.price, s.currency)],
           ...(s.currency !== 'EUR' ? ([['Cambio', formatQuantity(s.fxRate)]] as [string, string][]) : []),
           ['Importe bruto', formatMoney(s.grossEur)],
           ['Comisiones', formatMoney(s.feesEur.minus(s.taxesEur))],
@@ -408,6 +438,7 @@ export function SaleCard({ sale: s }: { sale: SaleDetail }) {
           ['Valor de transmisión', formatMoney(s.proceedsEur)],
           ['Coste de adquisición', formatMoney(s.costEur)],
           ['Resultado', formatSignedMoney(s.profitEur) + (s.profitPct ? ` (${formatPercent(s.profitPct)})` : ''), gl(s.profitEur)],
+          ...(s.withholdingEur.isZero() ? [] : ([['Retención', formatMoney(s.withholdingEur)]] as [string, string][])),
         ]}
       />
       {!s.deferredEur.isZero() && (

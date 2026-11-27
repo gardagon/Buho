@@ -32,6 +32,8 @@ export interface LotDetail {
   status: 'abierta' | 'parcial' | 'vendida'
   /** Lote heredado de otro fondo por un traspaso: `buy` es la compra original, en el fondo de origen. */
   inherited?: boolean
+  /** Acciones nuevas de dividendos flexibles que le corresponden (suman a `quantity`, sin coste). */
+  liberated?: Decimal
 }
 
 /**
@@ -71,6 +73,14 @@ export function lotDetails(portfolio: Portfolio, assetId: string, movements: Mov
     }
   }
 
+  // Acciones nuevas de dividendos flexibles: se suman al lote del que salen sus derechos.
+  const liberated = new Map<string, Decimal>()
+  for (const e of portfolio.scrips.filter((x) => x.assetId === assetId)) {
+    for (const l of e.lots) if (l.newShares.gt(0)) liberated.set(l.buyMovementId, (liberated.get(l.buyMovementId) ?? new Decimal(0)).plus(l.newShares))
+  }
+  // Coste por título actual (con las acciones nuevas) si el lote sigue vivo; si no, el coste entre todos sus títulos.
+  const currentUnit = (id: string) => positionLots.find((l) => l.movementId === id)?.unitCostEur
+
   const own = sortMovements(mine.filter((m) => m.type === 'compra' && d(m.quantity).gt(0)))
   const ownIds = new Set(own.map((m) => m.id))
   // Lotes que llegaron por traspaso desde otro fondo: se enseñan con su compra original.
@@ -96,7 +106,8 @@ export function lotDetails(portfolio: Portfolio, assetId: string, movements: Mov
   }
 
   const ownDetails = own.map((buy): LotDetail => {
-    const quantity = d(buy.quantity)
+    const extra = liberated.get(buy.id)
+    const quantity = d(buy.quantity).plus(extra ?? 0)
     const costEur = buyCostEur(buy)
     const mySlices = (slices.get(buy.id) ?? []).sort((a, b) => (a.date < b.date ? -1 : 1))
     const remaining = open.get(buy.id) ?? new Decimal(0)
@@ -104,7 +115,8 @@ export function lotDetails(portfolio: Portfolio, assetId: string, movements: Mov
       buy,
       quantity,
       costEur,
-      unitCostEur: costEur.div(quantity),
+      unitCostEur: (extra && currentUnit(buy.id)) || costEur.div(quantity),
+      liberated: extra,
       remaining,
       slices: mySlices,
       realizedProfitEur: mySlices.reduce((s, x) => s.plus(x.profitEur), new Decimal(0)),

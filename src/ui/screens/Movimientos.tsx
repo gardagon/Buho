@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { d, formatMoney, formatQuantity } from '../../domain/numbers'
 import { incomeBreakdown } from '../../domain/income'
 import { toEur } from '../../domain/portfolio'
+import { rightsGross } from '../../domain/scrip'
 import { MOVEMENT_TYPES, type Asset, type Movement } from '../../domain/types'
 import { useTradeChecks } from '../hooks'
 
@@ -59,7 +60,7 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
 
       {groups.length === 0 ? (
         <div className="empty">
-          <p>Aquí aparecerán tus compras, ventas, dividendos y cupones, del más reciente al más antiguo.</p>
+          <p>Aquí aparecerán tus compras, ventas, dividendos, cupones y traspasos, del más reciente al más antiguo.</p>
           <button className="btn primary" onClick={onAdd}>
             Añadir movimiento
           </button>
@@ -88,6 +89,34 @@ export function Movimientos({ movements, assets, onOpen, onAdd, filter, onFilter
                           <span className="tag traspaso">{MOVEMENT_TYPES.traspaso}</span> Sin tributar
                         </span>
                         <span className="row-sub row-end num">{m.account ?? 'participaciones'}</span>
+                      </button>
+                    </li>
+                  )
+                }
+                if (m.type === 'scrip') {
+                  // Dividendo flexible: en una sola fila, las acciones nuevas y lo cobrado por los derechos, con cómo tributa cada cosa.
+                  const shares = d(m.newShares ?? '0')
+                  const sold = d(m.rightsSold ?? '0')
+                  const money = sold.gt(0) ? incomeBreakdown({ ...m, amount: rightsGross(m).toString() }) : undefined
+                  return (
+                    <li key={m.id}>
+                      <button className="row" onClick={() => onOpen(m)}>
+                        <span className="row-title">{a?.name ?? 'Activo eliminado'}</span>
+                        <span className="row-end num gain">
+                          <strong>{money ? '+' + formatMoney(money.netEur) : `+${formatQuantity(shares)} acc.`}</strong>
+                        </span>
+                        <span className="row-sub num">
+                          <span className="tag scrip">{MOVEMENT_TYPES.scrip}</span>{' '}
+                          {shares.gt(0) ? `+${formatQuantity(shares)} ${shares.eq(1) ? 'acción nueva' : 'acciones nuevas'} (sin tributar)` : `${formatQuantity(m.quantity ?? '0')} derechos`}
+                        </span>
+                        <span className="row-sub row-end num">{m.account ?? ''}</span>
+                        {money && (
+                          <span className="row-sub row-note scrip-line num">
+                            {formatQuantity(sold)} derechos vendidos {m.rightsSoldTo === 'mercado' ? 'en el mercado' : 'a la empresa'}:{' '}
+                            {formatMoney(money.grossEur)} brutos, {formatMoney(money.netEur)} netos ·{' '}
+                            {m.rightsSoldTo === 'mercado' ? 'cuenta como ganancia' : 'cuenta como dividendo'}
+                          </span>
+                        )}
                       </button>
                     </li>
                   )

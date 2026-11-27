@@ -1,4 +1,5 @@
 import { incomeBreakdown } from './income'
+import { rightsGross } from './scrip'
 import { Decimal, d } from './numbers'
 import { buyCostEur, sellProceedsEur, toEur } from './portfolio'
 import type { Movement, PricePoint, QuoteDay, FxRates } from './types'
@@ -107,6 +108,7 @@ export function periodPerformance(args: {
     for (const m of moves) {
       if (m.date <= date) {
         if (m.type === 'compra') shares = shares.plus(d(m.quantity))
+        else if (m.type === 'scrip') shares = shares.plus(d(m.newShares ?? '0'))
         else if (m.type === 'venta') shares = shares.minus(d(m.quantity))
         else if (m.type === 'traspaso') {
           // Un traspaso mueve participaciones entre dos fondos sin comprar ni vender.
@@ -117,6 +119,8 @@ export function periodPerformance(args: {
         if (m.type === 'compra') bought = bought.plus(buyCostEur(m))
         else if (m.type === 'venta') sold = sold.plus(sellProceedsEur(m))
         else if (m.type === 'dividendo' || m.type === 'cupon') income = income.plus(incomeBreakdown(m).netEur)
+        // Dividendo flexible: lo cobrado por los derechos (las acciones nuevas ya cuentan en el valor de hoy).
+        else if (m.type === 'scrip' && d(m.rightsSold ?? '0').gt(0)) income = income.plus(incomeBreakdown({ ...m, amount: rightsGross(m).toString() }).netEur)
       }
     }
     const base: PeriodResult = {

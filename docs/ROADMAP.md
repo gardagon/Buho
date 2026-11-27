@@ -60,6 +60,9 @@
 
 ### Fase 5: fiscalidad completa
 Ver `docs/FISCALIDAD.md`, sección «Pendiente».
+- [x] Dividendo flexible (scrip): acciones nuevas repartidas entre lotes con su fecha, derechos vendidos a la empresa (dividendo) o en el mercado (ganancia), en Movimientos, Histórico, Excel y estimación
+- [ ] Probarlo con un caso real y comparar con la información fiscal del bróker
+- [ ] Compra de derechos para completar una acción
 
 ### Fase 6: rentabilidad
 - [ ] TWR (rentabilidad ponderada por tiempo)
