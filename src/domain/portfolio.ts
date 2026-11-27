@@ -1,5 +1,6 @@
 import { incomeBreakdown } from './income'
 import { Decimal, d } from './numbers'
+import { applyScrip, rightsGross, type ScripEvent } from './scrip'
 import type { Asset, Movement } from './types'
 
 /**
@@ -11,8 +12,10 @@ import type { Asset, Movement } from './types'
  * operación. Las comisiones suman al coste de compra y restan del importe de
  * venta.
  *
- * Pendiente (ver README): regla de los dos meses, splits, traspasos entre
- * fondos y derechos de suscripción.
+ * Los dividendos flexibles (scrip) reparten las acciones nuevas entre los
+ * lotes según de qué compra salen los derechos (ver `scrip.ts`).
+ *
+ * Pendiente (ver docs/FISCALIDAD.md): splits y compra de derechos.
  */
 
 export interface Lot {
@@ -53,6 +56,12 @@ export interface RealizedSale {
   gainEur: Decimal
   /** Lotes consumidos, con la fecha de compra de cada uno. */
   matched: { buyMovementId: string; buyDate: string; quantity: Decimal; costEur: Decimal }[]
+  /**
+   * Venta de derechos de un dividendo flexible en el mercado: `quantity` son derechos, el coste es 0 (desde 2017 todo
+   * lo cobrado es ganancia) y lleva la retención que practica el bróker. No consume acciones.
+   */
+  rights?: boolean
+  withholdingEur?: Decimal
 }
 
 export interface IncomeEntry {
@@ -68,6 +77,8 @@ export interface IncomeEntry {
   unclassifiedEur: Decimal
   feesEur: Decimal
   netEur: Decimal
+  /** Derechos de un dividendo flexible vendidos a la empresa: tributan como dividendo. */
+  scrip?: boolean
 }
 
 export interface PortfolioIssue {
@@ -80,6 +91,8 @@ export interface Portfolio {
   positions: Position[]
   sales: RealizedSale[]
   income: IncomeEntry[]
+  /** Dividendos flexibles: cómo se repartieron las acciones nuevas entre los lotes. */
+  scrips: ScripEvent[]
   issues: PortfolioIssue[]
   totalCostEur: Decimal
 }
@@ -120,6 +133,7 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
   const lotsByAsset = new Map<string, Lot[]>()
   const sales: RealizedSale[] = []
   const income: IncomeEntry[] = []
+  const scrips: ScripEvent[] = []
   const issues: PortfolioIssue[] = []
 
   for (const m of sortMovements(movements.filter((m) => !m.deleted))) {
@@ -239,6 +253,45 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
           destLots.splice(at, 0, inherited)
         }
       }
+    } else if (m.type === 'scrip') {
+      // Dividendo flexible: las acciones nuevas se reparten entre los lotes (no tributan) y los derechos vendidos
+      // cuentan como dividendo (a la empresa) o como ganancia patrimonial (en el mercado).
+      const { event, problems } = applyScrip(m, lots)
+      scrips.push(event)
+      for (const message of problems) issues.push({ movementId: m.id, assetId: asset.id, message })
+      if (event.rightsSold.gt(0)) {
+        const b = incomeBreakdown({ ...m, amount: rightsGross(m).toString() })
+        if (event.soldTo === 'mercado') {
+          const proceedsEur = b.grossEur.minus(b.feesEur)
+          sales.push({
+            movementId: m.id,
+            asset,
+            date: m.date,
+            quantity: event.rightsSold,
+            proceedsEur,
+            costEur: ZERO,
+            gainEur: proceedsEur,
+            matched: [],
+            rights: true,
+            withholdingEur: b.withholdingEur,
+          })
+        } else {
+          income.push({
+            movementId: m.id,
+            asset,
+            date: m.date,
+            type: 'dividendo',
+            grossEur: b.grossEur,
+            withholdingEur: b.withholdingEur,
+            originEur: b.originEur,
+            destEur: b.destEur,
+            unclassifiedEur: b.unclassifiedEur,
+            feesEur: b.feesEur,
+            netEur: b.netEur,
+            scrip: true,
+          })
+        }
+      }
     } else {
       const b = incomeBreakdown(m)
       income.push({
@@ -282,6 +335,7 @@ export function computePortfolio(assets: Asset[], movements: Movement[]): Portfo
     positions,
     sales,
     income,
+    scrips,
     issues,
     totalCostEur: positions.reduce((s, p) => s.plus(p.costEur), ZERO),
   }

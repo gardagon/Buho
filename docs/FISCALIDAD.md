@@ -47,10 +47,44 @@ Movimiento «Traspaso»: no tributa. Las participaciones salen del fondo de orig
 
 Límites: no se ha contrastado con un caso real; solo vale entre fondos ya dados de alta; la regla de los dos meses no sigue los lotes entre fondos; el rendimiento por periodos de la ficha ignora el valor movido por el traspaso dentro del periodo.
 
+### Dividendo flexible o scrip dividend (`src/domain/scrip.ts`)
+La empresa reparte un derecho por cada acción y cada accionista elige qué hacer con ellos. Movimiento «Dividendo flexible» (`type: 'scrip'`). Cada opción tributa distinto (art. 37.1.a LIRPF, según la redacción vigente desde 2017):
+
+| Qué se hace con los derechos | Cómo tributa | Dónde aparece en Buho |
+| --- | --- | --- |
+| Cambiarlos por acciones nuevas (ampliación liberada) | No tributa al recibirlas | Cartera: más acciones con el mismo coste total |
+| Vendérselos a la empresa a precio fijo | Rendimiento del capital mobiliario (como un dividendo), retención del 19 % | Dividendos, con la etiqueta «Dividendo flexible» |
+| Venderlos en el mercado | Ganancia patrimonial por todo lo cobrado (coste 0), retención del 19 % | Ventas, como «Venta de derechos» |
+
+**Acciones nuevas.** No se reciben a coste cero: el coste de las acciones antiguas se reparte entre las antiguas y las nuevas que les corresponden, y las nuevas conservan la **fecha de compra** de las acciones de las que proceden.
+
+**Reparto entre lotes:**
+1. Cada acción da un derecho. Si el número de derechos apuntado es menor que el de acciones (compras posteriores a la fecha de corte), los derechos salen de las compras más antiguas.
+2. Si no se venden todos los derechos, la ley dice que los vendidos son los de **los valores comprados en primer lugar** (FIFO). Los derechos sobrantes que no se apuntan como vendidos se tratan igual.
+3. Las acciones nuevas salen de los derechos que quedan (los de las compras más recientes): cada lote recibe acciones nuevas × sus derechos cambiados ÷ derechos cambiados. Pueden ser fracciones.
+4. Cada lote suma sus acciones nuevas y su coste por acción baja: el coste total y la fecha del lote no cambian.
+
+Ejemplo (caso de prueba en `portfolio.test.ts`): lote 1 con 30 acciones a 9 € (270 €) y lote 2, posterior, con 20 a 12 € (240 €). Scrip de 1 acción por cada 36 derechos: 50 derechos dan 1 acción y sobran 14, que se venden.
+- Los 14 vendidos salen del lote 1. Quedan 16 derechos del lote 1 y 20 del lote 2.
+- La acción nueva va 16/36 al lote 1 y 20/36 al lote 2.
+- Lote 1: 30,4444 acciones a 8,8686 € (270 €). Lote 2: 20,5556 acciones a 11,6757 € (240 €). Total: 51 acciones y 510 €.
+
+Con un solo lote da igual el criterio: 50 acciones a 10 € pasan a 51 acciones a 9,8039 €. Entre criterios de reparto solo cambian las ventas parciales futuras; si se vende todo, la plusvalía total es la misma.
+
+**Venta de derechos en el mercado.** Ganancia patrimonial del año de la venta por el importe bruto menos comisiones (coste 0). Se integra con las demás ganancias y pérdidas patrimoniales y su retención se resta de la cuota como retención en España.
+
+**Venta de derechos a la empresa.** Cuenta como dividendo: tributa por el bruto y su retención se resta de la cuota.
+
+Límites:
+- No contempla **comprar derechos** para completar una acción más: avisa si las acciones nuevas necesitan más derechos de los que quedan.
+- La regla de los dos meses no cuenta las acciones liberadas como recompra (no son una adquisición onerosa). Está por contrastar.
+- Es la regla de las ampliaciones liberadas españolas. En otros países el scrip suele tratarse como dividendo en especie; para valores extranjeros conviene revisarlo aparte.
+- Que el FIFO de los derechos se aplique igual cuando se venden a la empresa es una interpretación: la ley habla de «transmisión» de derechos, sin distinguir a quién.
+
 ### Estimación de la cuota del ahorro (`src/domain/tax.ts`)
 Aproximación de lo que se pagaría por la base imponible del ahorro de cada año, en territorio común. Se muestra en Cartera → Histórico, dentro de cada año, con el cálculo a la vista, y en una hoja del Excel.
 
-**Qué entra:** el saldo de ganancias y pérdidas patrimoniales por ventas del año y los dividendos y cupones **brutos** (rendimientos del capital mobiliario).
+**Qué entra:** el saldo de ganancias y pérdidas patrimoniales por ventas del año (incluidas las ventas de derechos en el mercado) y los dividendos y cupones **brutos** (rendimientos del capital mobiliario, incluidos los derechos vendidos a la empresa).
 
 **Integración y compensación (art. 49 LIRPF):**
 1. Las ganancias y pérdidas por ventas se compensan entre sí sin límite.
@@ -76,11 +110,11 @@ Las fuentes consultadas discrepan sobre el último tramo de 2025 y 2026 (28 % o 
 
 Además, nunca supera la cuota. Los dividendos «con retención en origen» son los que tienen ese dato apuntado; no se distingue país. Una retención sin repartir entre origen y España (movimientos antiguos) se trata como retención en España.
 
-**Resultado:** cuota − deducción por doble imposición − retenciones practicadas en España = a pagar (o a devolver, si es negativo).
+**Resultado:** cuota − deducción por doble imposición − retenciones practicadas en España (incluida la de las ventas de derechos) = a pagar (o a devolver, si es negativo).
 
 **Límites conocidos (la app los dice en pantalla):**
 - Solo cuenta lo que hay en Buho: si faltan años anteriores, faltan sus pérdidas pendientes.
-- Aplica la regla de los dos meses de forma simplificada (ver arriba). No contempla los derechos de suscripción ni gastos de administración y custodia.
+- Aplica la regla de los dos meses de forma simplificada (ver arriba). Incluye la venta de derechos de dividendos flexibles, pero no la compra de derechos ni los gastos de administración y custodia.
 - Territorio común: País Vasco y Navarra tienen escala propia.
 - Es una ayuda para hacerse una idea; no sustituye al borrador de la Agencia Tributaria.
 
@@ -89,7 +123,7 @@ Casos de prueba calculados a mano en `src/domain/tax.test.ts`.
 ## Pendiente (orden sugerido)
 
 1. **Splits y contrasplits:** cambian la cantidad y el coste unitario de los lotes sin alterar el coste total ni las fechas. Nuevo tipo de movimiento.
-2. **Derechos de suscripción y scrip dividends:** desde 2017 la venta de derechos de valores cotizados tributa como ganancia patrimonial con retención.
+2. **Compra de derechos** (para completar una acción más en un dividendo flexible) y derechos de ampliaciones no liberadas.
 3. **Informe para la declaración:** por año, ventas con fecha y valor de adquisición y transmisión por lote, como las pide el modelo 100.
 
 ## Casos de prueba de referencia

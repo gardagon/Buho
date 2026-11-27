@@ -78,7 +78,7 @@ export interface TaxEstimate {
   baseEur: Decimal
   brackets: BracketLine[]
   cuotaEur: Decimal
-  /** Retenciones e ingresos a cuenta practicados en España (y las sin repartir) sobre dividendos y cupones. */
+  /** Retenciones e ingresos a cuenta practicados en España (y las sin repartir) sobre dividendos, cupones y ventas de derechos. */
   withholdingEur: Decimal
   /** Deducción por doble imposición internacional (art. 80 LIRPF): lo retenido en origen que se resta de la cuota. */
   doubleTaxDeductionEur: Decimal
@@ -127,7 +127,8 @@ export function estimateTax(reports: YearReport[], year: string): TaxEstimate | 
     const r = byYear.get(y)
     const sales = r?.taxableNetEur ?? ZERO
     const income = r?.incomeGrossEur ?? ZERO
-    const withholdingSpain = (r?.withholdingDestEur ?? ZERO).plus(r?.withholdingUnclassifiedEur ?? ZERO)
+    // Retenciones en España: las de dividendos y cupones y la de las ventas de derechos en el mercado.
+    const withholdingSpain = (r?.withholdingDestEur ?? ZERO).plus(r?.withholdingUnclassifiedEur ?? ZERO).plus(r?.salesWithholdingEur ?? ZERO)
 
     // Pérdidas que ya han caducado (más de 4 años), de la más antigua a la más reciente.
     pending = pending.filter((p) => p.year >= y - YEARS_FORWARD && p.amount.gt(0)).sort((a, b) => a.year - b.year)

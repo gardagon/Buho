@@ -1,6 +1,6 @@
 import { Decimal } from './numbers'
 import type { Cell, SheetData } from './xlsx'
-import type { YearReport } from './sales'
+import type { SaleDetail, SalePiece, YearReport } from './sales'
 import type { TaxEstimate } from './tax'
 
 const n = (x: Decimal) => Number(x.toFixed(10))
@@ -26,19 +26,26 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
     'Beneficio (€)', 'Beneficio (%)', 'Días en cartera', 'Cuenta',
   )
   const sales: Cell[][] = [salesHead]
+  // Una venta de derechos (dividendo flexible) no sale de ninguna compra: va en una fila propia con coste 0.
+  type Row = Pick<SalePiece, 'quantity' | 'grossEur' | 'feesEur' | 'proceedsEur' | 'costEur' | 'profitEur' | 'profitPct' | 'buyCurrency'> &
+    Partial<Pick<SalePiece, 'buyDate' | 'buyPrice' | 'holdingDays'>>
+  const piecesOf = (s: SaleDetail): Row[] =>
+    s.rights
+      ? [{ ...s, profitPct: undefined, buyCurrency: 'Derechos de dividendo flexible: coste 0' }]
+      : s.pieces
   for (const a of r.assets) {
     for (const s of a.sales) {
-      for (const p of s.pieces) {
+      for (const p of piecesOf(s)) {
         const row = sales.length + 1
         sales.push([
           a.asset.name, a.asset.ticker ?? '', a.asset.isin ?? '',
           { date: s.date }, { v: n(p.quantity), style: 'num' }, { v: n(s.price), style: 'num' }, s.currency, { v: Number(s.fxRate), style: 'num' },
           eur(p.grossEur), eur(p.feesEur),
           { f: `${col(8)}${row}-${col(9)}${row}`, v: n(p.proceedsEur), style: 'eur' },
-          { date: p.buyDate }, { v: n(p.buyPrice), style: 'num' }, p.buyCurrency, eur(p.costEur),
+          p.buyDate ? { date: p.buyDate } : '', p.buyDate && p.buyPrice ? { v: n(p.buyPrice), style: 'num' } : '', p.buyCurrency, eur(p.costEur),
           { f: `${col(10)}${row}-${col(14)}${row}`, v: n(p.profitEur), style: 'eur' },
           { f: `IF(${col(14)}${row}=0,"",${col(15)}${row}/${col(14)}${row})`, v: p.profitPct ? n(p.profitPct) : '', style: 'pct' },
-          { f: `${col(3)}${row}-${col(11)}${row}`, v: p.holdingDays },
+          p.buyDate ? { f: `${col(3)}${row}-${col(11)}${row}`, v: p.holdingDays } : '',
           s.account ?? '',
         ])
       }
@@ -48,7 +55,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
     const last = sales.length
     const t = last + 1
     const sumOf = (c: number, v: Decimal): Cell => ({ f: `SUM(${col(c)}2:${col(c)}${last})`, v: n(v), style: 'eurNegrita' })
-    const pieces = r.assets.flatMap((a) => a.sales.flatMap((s) => s.pieces))
+    const pieces = r.assets.flatMap((a) => a.sales.flatMap(piecesOf))
     const total = (f: (p: (typeof pieces)[number]) => Decimal) => pieces.reduce((x, p) => x.plus(f(p)), new Decimal(0))
     const cost = total((p) => p.costEur)
     const profit = total((p) => p.profitEur)
@@ -98,7 +105,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
     for (const i of a.incomes) {
       const row = income.length + 1
       income.push([
-        a.asset.name, { date: i.date }, i.type === 'cupon' ? 'Cupón' : 'Dividendo',
+        a.asset.name, { date: i.date }, i.type === 'cupon' ? 'Cupón' : i.scrip ? 'Dividendo flexible (derechos vendidos a la empresa)' : 'Dividendo',
         eur(i.grossEur), eur(i.originEur), eur(i.destEur), eur(i.unclassifiedEur), eur(i.feesEur),
         // Con el neto real puesto a mano que no cuadra, se escribe el valor (es el importe real) y no la fórmula.
         i.grossEur.minus(i.withholdingEur).minus(i.feesEur).minus(i.netEur).abs().gt(0.005)
@@ -117,8 +124,9 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
     [{ v: 'Coste de adquisición: lo pagado por la compra en euros, con las comisiones. Valor de transmisión: lo ingresado por la venta, ya sin comisiones. Si una venta sale de varias compras, su importe y sus comisiones se reparten por títulos.', style: 'texto' }],
     [{ v: 'Divisas: los importes en euros usan el importe real en euros si se indicó, o el cambio de la fecha de cada operación.', style: 'texto' }],
     [{ v: 'Las columnas de resultado son fórmulas: puedes cambiar un dato y ver cómo se recalcula.', style: 'texto' }],
+    [{ v: 'Dividendo flexible: las acciones nuevas no tributan (el coste se reparte entre las antiguas y las nuevas). Los derechos vendidos a la empresa cuentan como dividendo; los vendidos en el mercado, como ganancia con coste 0 (desde 2017).', style: 'texto' }],
     [],
-    [{ v: 'Aviso: es orientativo. Aplica la regla de los dos meses de forma simplificada (ver docs/FISCALIDAD.md); los traspasos entre fondos no están contrastados con un caso real y no se contemplan los derechos de suscripción. Compruébalo antes de usarlo en la declaración.', style: 'texto' }],
+    [{ v: 'Aviso: es orientativo. Aplica la regla de los dos meses de forma simplificada (ver docs/FISCALIDAD.md); los traspasos entre fondos no están contrastados con un caso real y no se contempla la compra de derechos. Compruébalo antes de usarlo en la declaración.', style: 'texto' }],
   ]
 
   const taxRows: Cell[][] = tax
@@ -146,7 +154,7 @@ export function yearWorkbook(r: YearReport, generatedOn: string, tax?: TaxEstima
           ? [[{ v: 'Pérdidas pendientes de compensar (hasta 4 años después)', style: 'negrita' } as Cell], ...tax.pendingLosses.map((p): Cell[] => [`Pérdida de ${p.year}`, eur(p.amount)])]
           : []),
         [],
-        [{ v: 'Aproximación para territorio común (no País Vasco ni Navarra). Aplica la regla de los dos meses de forma simplificada y la deducción por doble imposición con el límite habitual de los convenios (15 %). No incluye derechos de suscripción. Solo cuenta lo que hay en Buho: si faltan años anteriores, faltarán sus pérdidas pendientes. Contrástalo con el borrador de la Agencia Tributaria.', style: 'texto' }],
+        [{ v: 'Aproximación para territorio común (no País Vasco ni Navarra). Aplica la regla de los dos meses de forma simplificada y la deducción por doble imposición con el límite habitual de los convenios (15 %). Incluye la venta de derechos de dividendos flexibles, pero no su compra. Solo cuenta lo que hay en Buho: si faltan años anteriores, faltarán sus pérdidas pendientes. Contrástalo con el borrador de la Agencia Tributaria.', style: 'texto' }],
       ]
     : []
 

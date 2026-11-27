@@ -108,24 +108,41 @@ export const MOVEMENT_TYPES = {
   dividendo: 'Dividendo',
   cupon: 'Cupón',
   traspaso: 'Traspaso',
+  scrip: 'Dividendo flexible',
 } as const
 
 export type MovementType = keyof typeof MOVEMENT_TYPES
 
 export const isTrade = (t: MovementType) => t === 'compra' || t === 'venta'
 
+/** Dividendo flexible: a quién se venden los derechos. A la empresa cuenta como dividendo; en el mercado, como ganancia. */
+export type RightsBuyer = 'emisor' | 'mercado'
+
 export interface Movement extends SyncedRecord {
   assetId: string
   type: MovementType
   date: ISODate
-  /** Compra/venta: títulos o participaciones. Traspaso: participaciones que salen del fondo de origen. */
+  /**
+   * Compra/venta: títulos o participaciones. Traspaso: participaciones que salen del fondo de origen.
+   * Dividendo flexible: derechos recibidos (uno por acción que se tenía).
+   */
   quantity?: DecimalString
   /** Traspaso entre fondos (art. 94 LIRPF): el fondo de destino y las participaciones que recibe. No tributa. */
   toAssetId?: string
   toQuantity?: DecimalString
-  /** Compra/venta: precio unitario en la divisa del movimiento. */
+  /**
+   * Dividendo flexible (scrip, ampliación de capital liberada). Todo opcional: el formato sigue en la versión 1.
+   * `scripRatio`: derechos que hacen falta por cada acción nueva. `newShares`: acciones nuevas recibidas.
+   * `rightsSold`: derechos vendidos, a la empresa (cuenta como dividendo) o en el mercado (ganancia patrimonial).
+   * El importe bruto de esa venta va en `amount`, con sus comisiones, retenciones y neto como en un dividendo.
+   */
+  scripRatio?: DecimalString
+  newShares?: DecimalString
+  rightsSold?: DecimalString
+  rightsSoldTo?: RightsBuyer
+  /** Compra/venta: precio unitario en la divisa del movimiento. Dividendo flexible: precio por derecho vendido. */
   price?: DecimalString
-  /** Dividendo/cupón: importe bruto cobrado, en la divisa del movimiento. */
+  /** Dividendo/cupón: importe bruto cobrado, en la divisa del movimiento. Dividendo flexible: bruto de los derechos vendidos. */
   amount?: DecimalString
   currency: string
   /**

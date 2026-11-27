@@ -6,9 +6,10 @@ import { checkTradePrice } from '../domain/checks'
 import { Decimal, d, formatMoney, formatQuantity, parseUserNumber, toInputValue } from '../domain/numbers'
 import { impliedIncomeFx, incomeBreakdown } from '../domain/income'
 import { computePortfolio, toEur } from '../domain/portfolio'
+import { scripSplit } from '../domain/scrip'
 import { completeTrade } from '../domain/trade'
 import { fetchRateOn } from '../quotes/fx'
-import { MOVEMENT_TYPES, isTrade, type Asset, type Movement, type MovementType } from '../domain/types'
+import { MOVEMENT_TYPES, isTrade, type Asset, type Movement, type MovementType, type RightsBuyer } from '../domain/types'
 import { AssetForm } from './AssetForm'
 import { windowsHitBy } from './LossWindows'
 import type { LossWindow } from '../domain/twoMonths'
@@ -32,6 +33,7 @@ const ADDED: Record<MovementType, string> = {
   dividendo: 'Dividendo añadido',
   cupon: 'Cupón añadido',
   traspaso: 'Traspaso añadido',
+  scrip: 'Dividendo flexible añadido',
 }
 
 const KIND: Record<MovementType, { noun: string; article: 'Nueva' | 'Nuevo' }> = {
@@ -40,7 +42,13 @@ const KIND: Record<MovementType, { noun: string; article: 'Nueva' | 'Nuevo' }> =
   dividendo: { noun: 'dividendo', article: 'Nuevo' },
   cupon: { noun: 'cupón', article: 'Nuevo' },
   traspaso: { noun: 'traspaso', article: 'Nuevo' },
+  scrip: { noun: 'dividendo flexible', article: 'Nuevo' },
 }
+
+/** Dividendo flexible: qué se hizo con los derechos. */
+type ScripChoice = 'acciones' | RightsBuyer
+
+const dayLongFmt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
 
 /** Suma de dos importes escritos por la persona, o null si alguno no es un número. */
 const sumInputs = (a: string, b: string) => {
@@ -88,6 +96,18 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const [toAssetId, setToAssetId] = useState(movement?.toAssetId ?? '')
   const [toQuantity, setToQuantity] = useState(toInputValue(movement?.toQuantity))
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(movement?.currency ?? null)
+  // Dividendo flexible: qué se hizo con los derechos, cuántos hacen falta por acción nueva, acciones recibidas y derechos sobrantes vendidos.
+  const [scripChoice, setScripChoice] = useState<ScripChoice | null>(() => {
+    if (movement?.type !== 'scrip') return null
+    if (movement.newShares && d(movement.newShares).gt(0)) return 'acciones'
+    return movement.rightsSoldTo ?? null
+  })
+  const [scripRatio, setScripRatio] = useState(toInputValue(movement?.scripRatio))
+  const [newShares, setNewShares] = useState(toInputValue(movement?.newShares))
+  const [rightsSold, setRightsSold] = useState(movement?.type === 'scrip' && movement.newShares && d(movement.newShares).gt(0) ? toInputValue(movement.rightsSold) : '')
+  const [leftoverTo, setLeftoverTo] = useState<RightsBuyer | null>(
+    movement?.type === 'scrip' && movement.newShares && d(movement.newShares).gt(0) ? (movement.rightsSoldTo ?? null) : null,
+  )
   // Dividendos y cupones: retención en origen y en España, cada una con su divisa, y el neto real ingresado.
   const hadSplit = movement?.withholdingOrigin !== undefined || movement?.withholdingDest !== undefined
   const [whOrigin, setWhOrigin] = useState(movement?.withholdingOrigin && movement.withholdingOrigin !== '0' ? toInputValue(movement.withholdingOrigin) : '')
@@ -110,6 +130,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
 
   const asset = assets.find((a) => a.id === assetId)
   const transfer = type === 'traspaso'
+  const scrip = type === 'scrip'
   const currency = transfer ? 'EUR' : (currencyChoice ?? asset?.currency ?? 'EUR')
   const currencyOptions = [...new Set([asset?.currency ?? 'EUR', 'EUR', 'USD'])]
   const needsFx = currency !== 'EUR'
@@ -134,9 +155,9 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
     [movements],
   )
 
-  // Títulos disponibles para vender, sin contar este mismo movimiento.
+  // Títulos disponibles para vender (o que dan derechos en un dividendo flexible), sin contar este mismo movimiento.
   const available = useMemo(() => {
-    if ((type !== 'venta' && type !== 'traspaso') || !asset) return null
+    if ((type !== 'venta' && type !== 'traspaso' && type !== 'scrip') || !asset) return null
     const others = movements.filter((m) => m.id !== movement?.id && m.assetId === asset.id && m.date <= date)
     const p = computePortfolio([asset], others)
     return p.positions[0]?.quantity ?? d(0)
@@ -160,6 +181,24 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   const whD = whDest.trim() === '' ? undefined : parseUserNumber(whDest)
   const netRaw = netPaid.trim() === '' ? undefined : parseUserNumber(netPaid)
   const fxRaw = fxRate.trim() === '' ? undefined : parseUserNumber(fxRate)
+
+  // Dividendo flexible: lo que no se escribe se calcula (derechos = acciones que se tenían; acciones nuevas y sobrantes con la proporción).
+  const rightsEff = scrip ? (q ? d(q) : available && available.gt(0) ? available : undefined) : undefined
+  const ratioRaw = scripRatio.trim() === '' ? undefined : parseUserNumber(scripRatio)
+  const newRaw = newShares.trim() === '' ? undefined : parseUserNumber(newShares)
+  const soldRaw = rightsSold.trim() === '' ? undefined : parseUserNumber(rightsSold)
+  const split0 = scrip && scripChoice === 'acciones' && rightsEff && ratioRaw && d(ratioRaw).gt(0) ? scripSplit(rightsEff, d(ratioRaw)) : undefined
+  const newEff = scripChoice === 'acciones' ? (newRaw ? d(newRaw) : split0?.newShares) : undefined
+  const leftoverCalc = scripChoice === 'acciones' && rightsEff && newEff && ratioRaw ? Decimal.max(rightsEff.minus(newEff.mul(d(ratioRaw))), d(0)) : undefined
+  const soldEff: Decimal | undefined = !scrip
+    ? undefined
+    : scripChoice === 'acciones'
+      ? soldRaw ? d(soldRaw) : leftoverCalc
+      : scripChoice ? rightsEff : undefined
+  const sellsRights = !!soldEff && soldEff.gt(0)
+  const buyer: RightsBuyer | null = scripChoice === 'acciones' ? leftoverTo : scripChoice
+  // Importe bruto de los derechos: el escrito o derechos vendidos × precio por derecho.
+  const amEff = scrip && amount.trim() === '' && pr && soldEff ? soldEff.mul(d(pr)).toString() : am
 
   // Compras y ventas: lo que falta se calcula con lo que sí se ha puesto.
   // Con los importes en la divisa de la operación se pasan a euros con el cambio (el escrito o el del BCE de ese día).
@@ -221,16 +260,21 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
       : undefined
   // Con un cambio escrito a mano, manda ese; si no, el que explica el neto.
   const derivedFx = fxRaw === undefined ? impliedFx : undefined
-  const fx = transfer ? '1' : trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? derivedFx?.toString() ?? ecbNow?.rate) : '1'
+  const fx = transfer || (scrip && !sellsRights) ? '1' : trade ? (t!.fxRate ? t!.fxRate.toString() : null) : needsFx ? (fxRaw ?? derivedFx?.toString() ?? ecbNow?.rate) : '1'
 
   const errors: Record<string, boolean> = {
     asset: !asset,
     date: !/^\d{4}-\d{2}-\d{2}$/.test(date),
-    quantity: (trade || transfer) && (q === null || d(q).lte(0)),
+    quantity: (trade || transfer) && (q === null || d(q).lte(0)) || (scrip && (q === null || !rightsEff || rightsEff.lte(0))),
+    scripChoice: scrip && !scripChoice,
+    scripRatio: scrip && scripChoice === 'acciones' && (!ratioRaw || d(ratioRaw).lte(0)),
+    newShares: scrip && scripChoice === 'acciones' && (newRaw === null || !newEff || newEff.lte(0)),
+    rightsSold: scrip && (soldRaw === null || (soldRaw !== undefined && d(soldRaw).lt(0))),
+    buyer: scrip && sellsRights && !buyer,
     toAsset: transfer && (!toAssetId || toAssetId === assetId || !assets.some((a) => a.id === toAssetId)),
     toQuantity: transfer && (toQ === undefined || toQ === null || d(toQ).lte(0)),
-    price: trade && (pr === null || !t!.price || t!.price.lt(0)),
-    amount: !trade && !transfer && (am === null || d(am).lte(0)),
+    price: (trade && (pr === null || !t!.price || t!.price.lt(0))) || (scrip && pr === null),
+    amount: !trade && !transfer && (scrip ? sellsRights && (amEff === null || !amEff || d(amEff).lte(0)) : am === null || d(am).lte(0)),
     fees: feesRaw === null || (feesRaw !== undefined && d(feesRaw).lt(0)),
     taxes: taxesRaw === null || (taxesRaw !== undefined && d(taxesRaw).lt(0)),
     total: trade && (totalRaw === null || (totalRaw !== undefined && d(totalRaw).lte(0)) || !!t!.inconsistent),
@@ -249,9 +293,9 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
   // Dividendos y cupones: el cálculo es el mismo que se usa en toda la app.
   const split = whOrigin.trim() !== '' || whDest.trim() !== ''
   const draft: Movement | null =
-    valid && !trade && !transfer
+    valid && !trade && !transfer && (!scrip || sellsRights)
       ? {
-          id: '', createdAt: '', updatedAt: '', assetId, type, date, amount: am!, currency, fxRate: fx!, fees: fe!,
+          id: '', createdAt: '', updatedAt: '', assetId, type, date, amount: amEff!, currency, fxRate: fx!, fees: fe!,
           withholding: split ? '0' : wh!,
           ...(split
             ? {
@@ -263,6 +307,22 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
         }
       : null
   const income = draft ? incomeBreakdown(draft) : null
+
+  // Dividendo flexible: se simula con el mismo cálculo de la cartera para enseñar qué pasará antes de guardar.
+  const scripPreview = useMemo(() => {
+    if (!scrip || !asset || !scripChoice || !rightsEff || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+    const others = movements.filter((m) => m.id !== movement?.id && m.assetId === asset.id)
+    const preview: Movement = {
+      id: 'preview', createdAt: '9999', updatedAt: '', assetId: asset.id, type: 'scrip', date, currency: 'EUR', fxRate: '1', fees: '0', withholding: '0',
+      quantity: rightsEff.toString(),
+      scripRatio: scripChoice === 'acciones' && ratioRaw ? ratioRaw : undefined,
+      newShares: scripChoice === 'acciones' && newEff ? newEff.toString() : undefined,
+      rightsSold: soldEff?.toString(),
+      rightsSoldTo: buyer ?? undefined,
+    }
+    const p = computePortfolio([asset], [...others, preview])
+    return { event: p.scrips.find((e) => e.movementId === 'preview'), problems: p.issues.filter((i) => i.movementId === 'preview').map((i) => i.message) }
+  }, [scrip, asset, scripChoice, rightsEff?.toString(), date, movements, movement?.id, ratioRaw, newEff?.toString(), soldEff?.toString(), buyer])
   if (income) {
     total = formatMoney(income.netEur, 'EUR')
   }
@@ -305,19 +365,27 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
           assetId: asset.id,
           type,
           date,
-          quantity: trade ? q! : undefined,
-          price: trade ? t!.price!.toString() : undefined,
-          amount: trade ? undefined : am!,
+          quantity: trade ? q! : scrip ? rightsEff!.toString() : undefined,
+          price: trade ? t!.price!.toString() : scrip && sellsRights && pr ? pr : undefined,
+          amount: trade || (scrip && !sellsRights) ? undefined : amEff!,
+          ...(scrip
+            ? {
+                scripRatio: scripChoice === 'acciones' ? ratioRaw! : undefined,
+                newShares: scripChoice === 'acciones' ? newEff!.toString() : undefined,
+                rightsSold: sellsRights ? soldEff!.toString() : undefined,
+                rightsSoldTo: sellsRights ? buyer! : undefined,
+              }
+            : {}),
           currency,
           fxRate: fx!,
-          fees: feesStored,
+          fees: scrip && !sellsRights ? '0' : feesStored,
           // Impuestos de la operación, también en la divisa del movimiento (como las comisiones).
           taxes: trade && t!.taxesEur && !t!.taxesEur.isZero() ? t!.taxesEur.mul(d(fx!)).toDecimalPlaces(8).toString() : undefined,
           // Solo si la persona lo ha puesto: es lo que realmente cobró o ingresó el bróker.
           totalEur: trade && totalRaw ? (amountsInPriceCur ? d(totalRaw).div(d(fx!)).toDecimalPlaces(2).toString() : totalRaw) : undefined,
           // Con retenciones separadas, la total se guarda también (en la divisa del movimiento) para versiones anteriores.
-          withholding: trade ? '0' : split ? income!.withholdingEur.mul(d(fx!)).toDecimalPlaces(8).toString() : wh!,
-          ...(!trade && split
+          withholding: trade || (scrip && !sellsRights) ? '0' : split ? income!.withholdingEur.mul(d(fx!)).toDecimalPlaces(8).toString() : wh!,
+          ...(!trade && split && (!scrip || sellsRights)
             ? {
                 withholdingOrigin: whO ?? '0',
                 withholdingOriginCurrency: whOriginCur ?? currency,
@@ -325,7 +393,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
                 withholdingDestCurrency: whDestCur ?? currency,
               }
             : {}),
-          netEur: !trade && netRaw ? netRaw : undefined,
+          netEur: !trade && netRaw && (!scrip || sellsRights) ? netRaw : undefined,
           account: account.trim() || undefined,
           note: note.trim() || undefined,
         },
@@ -387,7 +455,7 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
         </>
       }
     >
-      <div className="segmented" role="radiogroup" aria-label="Tipo de movimiento">
+      <div className="segmented types" role="radiogroup" aria-label="Tipo de movimiento">
         {(Object.keys(MOVEMENT_TYPES) as MovementType[]).map((t) => (
           <label key={t} data-tone={t}>
             <input type="radio" name="type" value={t} checked={type === t} onChange={() => {
@@ -563,9 +631,97 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
         </>
       ) : (
         <>
+          {scrip && (
+            <>
+              <Field
+                label="Derechos recibidos"
+                hint={available && available.gt(0) ? `Uno por acción: tenías ${formatQuantity(available)} en esa fecha` : 'Uno por cada acción que tenías'}
+              >
+                <input
+                  inputMode="decimal"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  placeholder={available && available.gt(0) ? toInputValue(available.toString()) : undefined}
+                  aria-invalid={bad('quantity')}
+                />
+              </Field>
+              <fieldset className="choice-list" aria-invalid={bad('scripChoice')}>
+                <legend>¿Qué hiciste con los derechos?</legend>
+                {(
+                  [
+                    ['acciones', 'Cambiarlos por acciones nuevas', 'No tributa ahora: el coste se reparte entre las acciones antiguas y las nuevas.'],
+                    ['emisor', 'Vendérselos todos a la empresa', 'A precio fijo. Tributa como dividendo.'],
+                    ['mercado', 'Venderlos todos en el mercado', 'Tributa como ganancia (coste 0), no como dividendo.'],
+                  ] as [ScripChoice, string, string][]
+                ).map(([value, title, sub]) => (
+                  <label key={value}>
+                    <input type="radio" name="scripChoice" value={value} checked={scripChoice === value} onChange={() => setScripChoice(value)} />
+                    <span>
+                      <strong>{title}</strong>
+                      <span className="small muted">{sub}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              {scripChoice === 'acciones' && (
+                <>
+                  <div className="grid-2">
+                    <Field label="Derechos por acción nueva" hint="Lo anuncia la empresa: 1 acción por cada 36 derechos → 36">
+                      <input inputMode="decimal" value={scripRatio} onChange={(e) => setScripRatio(e.target.value)} placeholder="36" aria-invalid={bad('scripRatio')} />
+                    </Field>
+                    <Field label="Acciones nuevas" hint={!newRaw && split0 ? 'Calculadas con los derechos' : 'Las que te entregaron'}>
+                      <input
+                        inputMode="decimal"
+                        value={newShares}
+                        onChange={(e) => setNewShares(e.target.value)}
+                        placeholder={split0 ? toInputValue(split0.newShares.toString()) : undefined}
+                        aria-invalid={bad('newShares')}
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid-2">
+                    <Field
+                      label="Derechos sobrantes vendidos"
+                      hint={leftoverCalc ? `Te sobran ${formatQuantity(leftoverCalc)}. Pon 0 si no se vendieron.` : 'Los que no llegan para otra acción'}
+                    >
+                      <input
+                        inputMode="decimal"
+                        value={rightsSold}
+                        onChange={(e) => setRightsSold(e.target.value)}
+                        placeholder={leftoverCalc ? toInputValue(leftoverCalc.toString()) : '0'}
+                        aria-invalid={bad('rightsSold')}
+                      />
+                    </Field>
+                    {sellsRights && (
+                      <Field label="¿A quién se vendieron?" hint="Mira el extracto del bróker">
+                        <select value={leftoverTo ?? ''} onChange={(e) => setLeftoverTo((e.target.value || null) as RightsBuyer | null)} aria-invalid={bad('buyer')}>
+                          <option value="">Elige</option>
+                          <option value="emisor">A la empresa (precio fijo)</option>
+                          <option value="mercado">En el mercado</option>
+                        </select>
+                      </Field>
+                    )}
+                  </div>
+                </>
+              )}
+              {sellsRights && (
+                <Field label={`Precio por derecho (${currency})`} hint="Con él se calcula el importe bruto">
+                  <input inputMode="decimal" value={price} onChange={(e) => editIncome(setPrice, e.target.value)} placeholder="0,35" aria-invalid={bad('price')} />
+                </Field>
+              )}
+            </>
+          )}
+          {(!scrip || sellsRights) && (
+          <>
           <div className="grid-2">
-            <Field label={`Importe bruto (${currency})`} hint="Antes de retenciones">
-              <input inputMode="decimal" value={amount} onChange={(e) => editIncome(setAmount, e.target.value)} aria-invalid={bad('amount')} />
+            <Field label={scrip ? `Bruto de los derechos (${currency})` : `Importe bruto (${currency})`} hint={scrip && amount.trim() === '' && amEff ? 'Calculado: derechos × precio' : 'Antes de retenciones'}>
+              <input
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => editIncome(setAmount, e.target.value)}
+                placeholder={scrip && amount.trim() === '' && amEff ? toInputValue(d(amEff).toDecimalPlaces(2).toString()) : undefined}
+                aria-invalid={bad('amount')}
+              />
             </Field>
             <Field
               label="Divisa del importe"
@@ -661,8 +817,52 @@ export function MovementForm({ lossWindows, movement, assets, movements, default
               />
             </Field>
           </div>
+          </>
+          )}
         </>
       )}
+
+      {scripPreview?.event && (
+        <div className="notice small scrip-summary" role="status">
+          {scripPreview.event.newShares.gt(0) && (
+            <p>
+              <strong>
+                {formatQuantity(scripPreview.event.newShares)} {scripPreview.event.newShares.eq(1) ? 'acción nueva' : 'acciones nuevas'}: no tributa ahora.
+              </strong>{' '}
+              Tu coste medio por acción baja de {formatMoney(scripPreview.event.avgCostEurBefore)} a {formatMoney(scripPreview.event.avgCostEurAfter)}; el coste
+              total no cambia.
+              {scripPreview.event.lots.filter((l) => l.newShares.gt(0)).length > 1 &&
+                ` Se reparte entre tus compras: ${scripPreview.event.lots
+                  .filter((l) => l.newShares.gt(0))
+                  .map((l) => `${formatQuantity(l.newShares.toDecimalPlaces(4))} a la del ${dayLongFmt.format(new Date(l.buyDate + 'T12:00:00'))}`)
+                  .join(', ')}.`}
+            </p>
+          )}
+          {sellsRights && (
+            <p>
+              <strong>
+                {formatQuantity(soldEff!)} derechos vendidos {buyer === 'mercado' ? 'en el mercado' : buyer === 'emisor' ? 'a la empresa' : ''}
+                {income ? `: ${formatMoney(income.grossEur)} brutos, ${formatMoney(income.netEur)} netos` : ''}.
+              </strong>{' '}
+              {buyer === 'mercado'
+                ? 'Cuentan como ganancia patrimonial (con coste 0), no como dividendo. Aparecerán en Ventas.'
+                : buyer === 'emisor'
+                  ? 'Cuentan como dividendo (rendimiento del capital mobiliario). Aparecerán en Dividendos.'
+                  : 'Elige a quién se vendieron: cambia cómo tributan.'}
+            </p>
+          )}
+          {scripPreview.event.rightsLeft.gt(0) && (
+            <p>
+              Quedan {formatQuantity(scripPreview.event.rightsLeft)} derechos sin vender ni cambiar. Si el bróker los vendió, apúntalos en «Derechos sobrantes vendidos».
+            </p>
+          )}
+        </div>
+      )}
+      {scripPreview?.problems.map((msg) => (
+        <p key={msg} className="error-text">
+          {msg}
+        </p>
+      ))}
 
       {trade && t?.totalEur && t.perShareEur && !t.inconsistent && (
         <div className="total-line num">

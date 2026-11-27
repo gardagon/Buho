@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { Decimal } from './numbers'
 import type { YearReport } from './sales'
 import { applyBrackets, estimateTax, savingsBrackets } from './tax'
+import { computePortfolio } from './portfolio'
+import { yearReport } from './sales'
+import type { Asset, Movement } from './types'
 
 const D = (v: string | number) => new Decimal(v)
 /** Un año con solo lo que importa para el cálculo. */
@@ -162,5 +165,41 @@ describe('estimateTax', () => {
       expect(e.doubleTaxDeductionEur.toString()).toBe('14.25')
       expect(e.resultEur.toString()).toBe('0')
     })
+  })
+})
+
+describe('dividendo flexible en la estimación', () => {
+  const now = '2026-01-01T00:00:00.000Z'
+  const asset: Asset = { id: 'SC', name: 'SC', type: 'accion', currency: 'EUR', createdAt: now, updatedAt: now }
+  const base = { assetId: 'SC', currency: 'EUR', fxRate: '1', fees: '0', withholding: '0', createdAt: now, updatedAt: now }
+  const buy: Movement = { ...base, id: 'b', type: 'compra', date: '2025-03-01', quantity: '50', price: '10' }
+  const scrip = (to: 'emisor' | 'mercado'): Movement => ({
+    ...base, id: 's', type: 'scrip', date: '2026-11-27', quantity: '50', scripRatio: '36', newShares: '1',
+    rightsSold: '14', rightsSoldTo: to, amount: '5', withholdingDest: '0.95', withholdingOrigin: '0',
+  })
+
+  it('los derechos vendidos en el mercado son ganancia y su retención se resta de la cuota', () => {
+    // 14 derechos en el mercado: 5 € brutos, 0,95 € de retención (19 %). Ganancia 5 € → cuota 5 × 19 % = 0,95 €.
+    // 0,95 − 0,95 de retención = 0. Resultado del año: 5 − 0,95 = 4,05 €.
+    const ms = [buy, scrip('mercado')]
+    const r = yearReport(computePortfolio([asset], ms), ms, '2026')
+    expect(r.netEur.toString()).toBe('5')
+    expect(r.incomeGrossEur.toString()).toBe('0')
+    expect(r.totalEur.toString()).toBe('4.05')
+    const e = estimateTax([r], '2026')!
+    expect(e.taxableSalesEur.toString()).toBe('5')
+    expect(e.withholdingEur.toString()).toBe('0.95')
+    expect(e.resultEur.toString()).toBe('0')
+  })
+
+  it('los vendidos a la empresa son dividendo (capital mobiliario), no ganancia', () => {
+    const ms = [buy, scrip('emisor')]
+    const r = yearReport(computePortfolio([asset], ms), ms, '2026')
+    expect(r.netEur.toString()).toBe('0')
+    expect(r.dividends.grossEur.toString()).toBe('5')
+    expect(r.assets[0].incomes[0].scrip).toBe(true)
+    const e = estimateTax([r], '2026')!
+    expect(e.taxableIncomeEur.toString()).toBe('5')
+    expect(e.resultEur.toString()).toBe('0')
   })
 })

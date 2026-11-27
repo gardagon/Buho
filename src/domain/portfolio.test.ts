@@ -252,3 +252,99 @@ describe('impuestos de la operación', () => {
   })
 })
 })
+
+describe('dividendo flexible (scrip)', () => {
+  it('con un solo lote, la acción nueva reparte el coste y los derechos vendidos a la empresa son dividendo', () => {
+    // 50 acciones a 10 € = 500 €. Scrip de 1 acción nueva por 36 derechos: 50 derechos → 1 acción y sobran 14.
+    // Los 14 se venden a la empresa a 0,36 €: 5,04 € brutos, 0,96 € de retención (19 %) → 4,08 € netos.
+    // Después: 51 acciones, mismo coste (500 €) → 500 / 51 = 9,8039 € por acción.
+    const p = computePortfolio([asset('SC1')], [
+      mv({ assetId: 'SC1', type: 'compra', date: '2025-03-01', quantity: '50', price: '10' }),
+      mv({
+        assetId: 'SC1', type: 'scrip', date: '2026-11-27', quantity: '50', scripRatio: '36', newShares: '1',
+        rightsSold: '14', rightsSoldTo: 'emisor', price: '0.36', amount: '5.04', withholdingDest: '0.96', withholdingOrigin: '0',
+      }),
+    ])
+    expect(p.issues).toHaveLength(0)
+    const pos = p.positions[0]
+    expect(pos.quantity.toString()).toBe('51')
+    expect(pos.costEur.toDecimalPlaces(8).toString()).toBe('500')
+    expect(pos.avgCostEur.toDecimalPlaces(4).toString()).toBe('9.8039')
+    // La acción nueva conserva la fecha de compra del lote.
+    expect(pos.lots.map((l) => l.date)).toEqual(['2025-03-01'])
+    expect(p.sales).toHaveLength(0)
+    expect(p.income).toHaveLength(1)
+    expect(p.income[0].scrip).toBe(true)
+    expect(p.income[0].grossEur.toString()).toBe('5.04')
+    expect(p.income[0].netEur.toString()).toBe('4.08')
+  })
+
+  it('con dos lotes, los derechos vendidos salen del más antiguo y la acción nueva de los que quedan', () => {
+    // Lote 1: 30 acciones a 9 € (270 €). Lote 2: 20 acciones a 12 € (240 €). 50 derechos; 1 acción por 36.
+    // Se venden 14 derechos en el mercado (art. 37.1.a: los vendidos son los de las compras más antiguas) → del lote 1.
+    // Quedan 16 derechos del lote 1 y 20 del lote 2 → la acción nueva va 16/36 al lote 1 y 20/36 al lote 2.
+    //   Lote 1: 30 + 0,4444 = 30,4444 acciones, 270 € → 8,8686 €/acción.
+    //   Lote 2: 20 + 0,5556 = 20,5556 acciones, 240 € → 11,6757 €/acción.
+    // Venta de los 14 derechos en el mercado: 4,90 € brutos, 0,93 € de retención. Ganancia = 4,90 € (coste 0).
+    const p = computePortfolio([asset('SC2')], [
+      mv({ assetId: 'SC2', type: 'compra', date: '2024-03-01', quantity: '30', price: '9' }),
+      mv({ assetId: 'SC2', type: 'compra', date: '2025-06-01', quantity: '20', price: '12' }),
+      mv({
+        assetId: 'SC2', type: 'scrip', date: '2026-11-27', quantity: '50', scripRatio: '36', newShares: '1',
+        rightsSold: '14', rightsSoldTo: 'mercado', price: '0.35', amount: '4.90', withholdingDest: '0.93', withholdingOrigin: '0',
+      }),
+    ])
+    expect(p.issues).toHaveLength(0)
+    const [l1, l2] = p.positions[0].lots
+    expect(l1.quantity.toDecimalPlaces(4).toString()).toBe('30.4444')
+    expect(l1.unitCostEur.toDecimalPlaces(4).toString()).toBe('8.8686')
+    expect(l2.quantity.toDecimalPlaces(4).toString()).toBe('20.5556')
+    expect(l2.unitCostEur.toDecimalPlaces(4).toString()).toBe('11.6757')
+    expect(p.positions[0].quantity.toDecimalPlaces(8).toString()).toBe('51')
+    expect(p.positions[0].costEur.toDecimalPlaces(8).toString()).toBe('510')
+
+    const e = p.scrips[0]
+    expect(e.lots.map((l) => [l.rightsSold.toString(), l.rightsUsed.toString()])).toEqual([['14', '16'], ['0', '20']])
+
+    // La venta de derechos en el mercado es una ganancia con coste 0, no un dividendo.
+    expect(p.income).toHaveLength(0)
+    expect(p.sales).toHaveLength(1)
+    expect(p.sales[0].rights).toBe(true)
+    expect(p.sales[0].costEur.toString()).toBe('0')
+    expect(p.sales[0].gainEur.toString()).toBe('4.9')
+    expect(p.sales[0].withholdingEur?.toString()).toBe('0.93')
+  })
+
+  it('al vender después, el FIFO usa el coste repartido de cada lote', () => {
+    // Mismo caso que arriba y luego se venden 31 acciones: 30,4444 del lote 1 (270 €) y 0,5556 del lote 2.
+    // Coste del lote 2: 240 × (5/9) / (185/9) = 240 × 5 / 185 = 6,486486 €. Total: 276,486486 €.
+    const p = computePortfolio([asset('SC3')], [
+      mv({ assetId: 'SC3', type: 'compra', date: '2024-03-01', quantity: '30', price: '9' }),
+      mv({ assetId: 'SC3', type: 'compra', date: '2025-06-01', quantity: '20', price: '12' }),
+      mv({ assetId: 'SC3', type: 'scrip', date: '2026-11-27', quantity: '50', scripRatio: '36', newShares: '1', rightsSold: '14', rightsSoldTo: 'mercado', amount: '4.90' }),
+      mv({ assetId: 'SC3', type: 'venta', date: '2027-02-01', quantity: '31', price: '10' }),
+    ])
+    const sale = p.sales.find((s) => !s.rights)!
+    expect(sale.costEur.toDecimalPlaces(6).toString()).toBe('276.486486')
+    expect(sale.matched.map((m) => m.buyDate)).toEqual(['2024-03-01', '2025-06-01'])
+    expect(p.positions[0].quantity.toDecimalPlaces(8).toString()).toBe('20')
+  })
+
+  it('avisa si se venden y cambian más derechos de los recibidos', () => {
+    // 50 derechos: 2 acciones × 36 = 72 derechos, más de los que hay.
+    const p = computePortfolio([asset('SC4')], [
+      mv({ assetId: 'SC4', type: 'compra', date: '2025-03-01', quantity: '50', price: '10' }),
+      mv({ assetId: 'SC4', type: 'scrip', date: '2026-11-27', quantity: '50', scripRatio: '36', newShares: '2' }),
+    ])
+    expect(p.issues).toHaveLength(1)
+  })
+
+  it('cuenta los derechos que sobran sin vender ni cambiar', () => {
+    const p = computePortfolio([asset('SC5')], [
+      mv({ assetId: 'SC5', type: 'compra', date: '2025-03-01', quantity: '50', price: '10' }),
+      mv({ assetId: 'SC5', type: 'scrip', date: '2026-11-27', quantity: '50', scripRatio: '36', newShares: '1' }),
+    ])
+    expect(p.scrips[0].rightsLeft.toString()).toBe('14')
+    expect(p.positions[0].quantity.toString()).toBe('51')
+  })
+})

@@ -1,6 +1,7 @@
 import { Decimal, d } from './numbers'
 import { computeTwoMonthRule } from './twoMonths'
 import { toEur, type Portfolio } from './portfolio'
+import { rightsGross } from './scrip'
 import type { Asset, Movement } from './types'
 
 /** La parte de una venta que sale de una compra concreta (FIFO). */
@@ -48,6 +49,10 @@ export interface SaleDetail {
   /** Pérdida de ventas anteriores que se recupera en esta venta (positivo). */
   releasedEur: Decimal
   pieces: SalePiece[]
+  /** Venta de derechos de un dividendo flexible en el mercado: `quantity` son derechos y el coste es 0. */
+  rights?: boolean
+  /** Retención practicada en la venta (solo en la de derechos: 19 % desde 2017). */
+  withholdingEur: Decimal
 }
 
 export interface IncomeLine {
@@ -62,6 +67,8 @@ export interface IncomeLine {
   unclassifiedEur: Decimal
   feesEur: Decimal
   netEur: Decimal
+  /** Derechos de un dividendo flexible vendidos a la empresa: tributan como dividendo. */
+  scrip?: boolean
 }
 
 /** Importes de un tipo de rendimiento (dividendos o cupones) en un año, en EUR. */
@@ -84,6 +91,8 @@ export interface AssetYear {
   incomeNetEur: Decimal
   dividends: IncomeTotals
   coupons: IncomeTotals
+  /** Retención de las ventas de derechos en el mercado. */
+  salesWithholdingEur: Decimal
   /** Resultado del valor en el año: beneficio de las ventas + dividendos y cupones netos de retención. */
   totalEur: Decimal
 }
@@ -119,6 +128,8 @@ export interface YearReport {
   incomeNetEur: Decimal
   dividends: IncomeTotals
   coupons: IncomeTotals
+  /** Retención practicada en España en las ventas de derechos en el mercado (se resta de la cuota). */
+  salesWithholdingEur: Decimal
   /** Resultado del año: beneficio de las ventas + dividendos y cupones netos de retención. */
   totalEur: Decimal
 }
@@ -155,6 +166,7 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
         incomeGrossEur: ZERO, withholdingEur: ZERO, incomeNetEur: ZERO,
         dividends: { grossEur: ZERO, withholdingEur: ZERO, netEur: ZERO },
         coupons: { grossEur: ZERO, withholdingEur: ZERO, netEur: ZERO },
+        salesWithholdingEur: ZERO,
         totalEur: ZERO,
       }
       assets.set(asset.id, a)
@@ -165,7 +177,8 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
   for (const s of portfolio.sales.filter((x) => x.date.startsWith(year))) {
     const m = byId.get(s.movementId)
     const fxRate = m?.fxRate ?? '1'
-    const grossEur = m ? toEur(d(m.quantity).mul(d(m.price)), fxRate) : s.proceedsEur
+    // Derechos vendidos en el mercado: el importe es el bruto de los derechos, no cantidad × precio de acciones.
+    const grossEur = m ? toEur(s.rights ? rightsGross(m) : d(m.quantity).mul(d(m.price)), fxRate) : s.proceedsEur
     const feesEur = grossEur.minus(s.proceedsEur)
     const pieces = s.matched.map((p): SalePiece => {
       const buy = byId.get(p.buyMovementId)
@@ -196,13 +209,15 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
       releasedEur: tm?.releasedEur ?? ZERO,
       date: s.date,
       quantity: s.quantity,
-      price: d(m?.price),
+      price: s.rights && m ? (m.price ? d(m.price) : rightsGross(m).div(s.quantity)) : d(m?.price),
       currency: m?.currency ?? 'EUR',
       fxRate,
+      rights: s.rights,
+      withholdingEur: s.withholdingEur ?? ZERO,
       account: m?.account,
       grossEur,
       feesEur,
-      taxesEur: m ? toEur(d(m.taxes ?? '0'), fxRate) : ZERO,
+      taxesEur: m && !s.rights ? toEur(d(m.taxes ?? '0'), fxRate) : ZERO,
       proceedsEur: s.proceedsEur,
       costEur: s.costEur,
       profitEur: s.gainEur,
@@ -223,6 +238,7 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
       unclassifiedEur: i.unclassifiedEur,
       feesEur: i.feesEur,
       netEur: i.netEur,
+      scrip: i.scrip,
     })
   }
 
@@ -243,7 +259,8 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
     }
     a.dividends = totals('dividendo')
     a.coupons = totals('cupon')
-    a.totalEur = a.profitEur.plus(a.incomeNetEur)
+    a.salesWithholdingEur = sum(a.sales.map((s) => s.withholdingEur))
+    a.totalEur = a.profitEur.plus(a.incomeNetEur).minus(a.salesWithholdingEur)
   }
 
   const allSales = list.flatMap((a) => a.sales)
@@ -278,6 +295,7 @@ export function yearReport(portfolio: Portfolio, movements: Movement[], year: st
       withholdingEur: sum(list.map((a) => a.coupons.withholdingEur)),
       netEur: sum(list.map((a) => a.coupons.netEur)),
     },
-    totalEur: sum(allSales.map((s) => s.profitEur)).plus(sum(list.map((a) => a.incomeNetEur))),
+    salesWithholdingEur: sum(allSales.map((s) => s.withholdingEur)),
+    totalEur: sum(allSales.map((s) => s.profitEur)).plus(sum(list.map((a) => a.incomeNetEur))).minus(sum(allSales.map((s) => s.withholdingEur))),
   }
 }

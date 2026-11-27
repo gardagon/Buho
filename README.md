@@ -10,7 +10,7 @@ Seguimiento personal de inversiones: acciones, ETF, fondos, bonos, materias prim
 
 | Fase | Estado |
 | --- | --- |
-| Registro de activos y movimientos (compra, venta, dividendo, cupón) | Hecho |
+| Registro de activos y movimientos (compra, venta, dividendo, cupón, traspaso, dividendo flexible) | Hecho |
 | Posiciones a coste con FIFO, comisiones y tipo de cambio por operación | Hecho |
 | Plusvalías realizadas y rendimientos por año | Hecho (orientativo) |
 | Sincronización con Google Drive y copias de seguridad en archivo | Hecho |
